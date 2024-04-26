@@ -1,0 +1,15 @@
+.DS_Store
+bin/
+lib/
+pyvenv.cfg
+
+*/__pycache__/
+*/.pytest_cache/
+*/.tox/
+*/.mypy_cache/
+*/.mypy/
+*/.coverage
+*/.coverage.*
+
+data
+share
