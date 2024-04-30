@@ -12,9 +12,9 @@ from absl import app, flags
 from jaxtyping import Array
 from tqdm import tqdm
 
-from dpw.flows import RQSFlow
-from dpw.types import OptState, PRNGKey
-from dpw.visualize import plot_torus_dist
+from src.flows import RQSFlow
+from src.types import OptState, PRNGKey
+#from src.visualize import plot_torus_dist
 
 flags.DEFINE_integer(
   "flow_num_layers", 1, "Number of layers to use in the flow."

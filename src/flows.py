@@ -23,6 +23,7 @@ def make_conditioner(
   """Creates an MLP conditioner for each layer of the flow."""
 
   def conditioner(x: Optional[Array] = None, name: str = ""):
+    #breakpoint()
     if x is None or x.shape[-1] == 0:
       init = jnp.zeros if init_to_identity else hk.initializers.RandomNormal(
         stddev=1. / math.sqrt(num_bijector_params)
@@ -98,7 +99,7 @@ def make_flow_model(
   layers = []
 
   if True:  # autoregressive
-    assert periodized
+    # assert periodized
     # the conditioner has event shape of 1 since autoregressive
     # decomposition is used
     perms = itertools.cycle(itertools.permutations(range(event_dim)))
