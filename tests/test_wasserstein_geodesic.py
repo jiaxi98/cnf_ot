@@ -26,11 +26,11 @@ flags.DEFINE_integer("hidden_size", 64, "Hidden size of the MLP conditioner.")
 flags.DEFINE_integer(
   "num_bins", 3, "Number of bins to use in the rational-quadratic spline."
 )  #
-flags.DEFINE_integer("batch_size", 256, "Batch size for training.")
+flags.DEFINE_integer("batch_size", 1024, "Batch size for training.")
 flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
 flags.DEFINE_float("lr", 2e-4, "Learning rate for the optimizer.")
-flags.DEFINE_integer("epochs", 2000, "Number of training steps to run.")
-flags.DEFINE_integer("eval_frequency", 2000, "How often to evaluate the model.")
+flags.DEFINE_integer("epochs", 20000, "Number of training steps to run.")
+flags.DEFINE_integer("eval_frequency", 1000, "How often to evaluate the model.")
 flags.DEFINE_integer("seed", 42, "random seed.")
 
 flags.DEFINE_enum(
@@ -44,6 +44,14 @@ flags.DEFINE_boolean('plot', False, 'whether to plot resulting model density')
 flags.DEFINE_integer("dim", 1, "dimension of the base space")
 
 FLAGS = flags.FLAGS
+
+def kl_ess(log_model_prob, target_prob):
+  """metrics used in the tori paper."""
+  weights = target_prob / jnp.exp(log_model_prob)
+  Z = jnp.mean(weights)  # normalizing constant
+  KL = jnp.mean(log_model_prob - jnp.log(target_prob)) + jnp.log(Z)
+  ESS = jnp.sum(weights)**2 / jnp.sum(weights**2)
+  return Z, KL, ESS
 
 def gaussian_distribution_sampler(
     prng_key: int=42,
@@ -67,6 +75,16 @@ def gaussian_pdf(
 ) -> jnp.ndarray:
 
     return jnp.exp(-0.5 * jnp.dot(jnp.dot((r - mean), jnp.linalg.inv(var)), (r - mean).T)) / jnp.sqrt(jnp.linalg.det(2 * jnp.pi * var))
+
+def my_pdf_1(
+    r: jnp.ndarray
+    ):
+  return 2 * r
+
+def unimodal_target_unnorm_prob(theta, phi=(4.18, 5.96, 1.94), beta=1.0, dim=1):
+  neg_e = sum([jnp.cos(theta[i] - phi[i]) for i in range(dim)])
+  prob = jnp.exp(beta * neg_e)
+  return prob
 
 def main(_):
   jax.config.update("jax_enable_x64", FLAGS.use_64)
@@ -96,7 +114,7 @@ def main(_):
     periodized=False,
   )
   model = hk.without_apply_rng(hk.multi_transform(model))
-  target_unnorm_prob = gaussian_pdf
+  target_unnorm_prob = jax.vmap(my_pdf_1)
 
   # sample_fn = jax.jit(model.apply.sample, static_argnames=['sample_shape'])
 
@@ -143,12 +161,12 @@ def main(_):
 
     return kl_loss_source + kl_loss_target + kinetic/t_batch_size
 
-  # @partial(jax.jit, static_argnames=['batch_size'])
-  # def eval_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
-  #   samples, log_prob = model.apply.sample_and_log_prob(
-  #     params, seed=rng, sample_shape=(batch_size, )
-  #   )
-  #   return kl_ess(log_prob, target_unnorm_prob(samples))
+  @partial(jax.jit, static_argnames=['batch_size'])
+  def eval_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
+    samples, log_prob = model.apply.sample_and_log_prob(
+      params, seed=rng, sample_shape=(batch_size, )
+    )
+    return kl_ess(log_prob, target_unnorm_prob(samples))
 
   @jax.jit
   def update(params: hk.Params, rng: PRNGKey,
@@ -169,7 +187,8 @@ def main(_):
       params, seed=rng, sample_shape=(FLAGS.batch_size, )
     )
   plt.subplot(121)
-  plt.hist(samples[...,0], bins=10, density=True)
+  bins = 5
+  plt.hist(samples[...,0], bins=bins, density=True)
   #breakpoint()
   
   # TEST JACOBIAN
@@ -188,18 +207,18 @@ def main(_):
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, opt_state)
-    desc_str = f"{loss=:.2E}"
-    iters.set_description(desc_str)
+    #desc_str = f"{loss=:.2E}"
+    #iters.set_description(desc_str)
     loss_hist.append(loss)
 
-    # if step % FLAGS.eval_frequency == 0:
-    #   desc_str = f"{loss=:.2f}"
+    if step % FLAGS.eval_frequency == 0:
+      desc_str = f"{loss=:.2f}"
 
-    #   key, rng = jax.random.split(rng)
-    #   Z, KL, ESS = eval_fn(params, key, FLAGS.test_batch_size)
-    #   ESS = ESS / FLAGS.test_batch_size * 100
-    #   desc_str += f" | {Z=:.2f} | {KL=:.2E} | {ESS=:.2f}%"
-    #   iters.set_description_str(desc_str)
+      key, rng = jax.random.split(rng)
+      Z, KL, ESS = eval_fn(params, key, FLAGS.test_batch_size)
+      ESS = ESS / FLAGS.test_batch_size * 100
+      desc_str += f" | {Z=:.2f} | {KL=:.2E} | {ESS=:.2f}%"
+      iters.set_description_str(desc_str)
 
     #   # xi = inverse_fn(params, r)
     #   # r_inv = forward_fn(params, xi)
@@ -222,8 +241,11 @@ def main(_):
   #     partial(model.apply.log_prob, params), target_unnorm_prob, FLAGS.dim
   #   )
   plt.subplot(122)
-  plt.hist(samples[...,0], bins=10, density=True)
-  plt.savefig("results/fig/test.pdf")
+  samples = model.apply.sample(
+      params, seed=rng, sample_shape=(FLAGS.batch_size, )
+    )
+  plt.hist(samples[...,0], bins=bins*4, density=True)
+  #plt.savefig("results/fig/test.pdf")
   plt.show()
 
 if __name__ == "__main__":
