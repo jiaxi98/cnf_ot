@@ -84,8 +84,6 @@ def main(_):
   #target_pdf = distrax.Normal(loc=jnp.array([1, 2]), scale=jnp.array([[2,.5]])).prob        # 2D Gaussian
   target_prob = jax.vmap(gaussian_2d)
 
-  #breakpoint()
-
   sample_fn = jax.jit(model.apply.sample, static_argnames=['sample_shape'])
 
   @partial(jax.jit, static_argnames=['batch_size'])
@@ -116,7 +114,7 @@ def main(_):
     
     return kl_ess(log_prob, target_prob(samples))
     # 2D distrax.Normal samples
-    return kl_ess(log_prob, jnp.prod(target_prob(samples), axis=(1,2)))
+    #return kl_ess(log_prob, jnp.prod(target_prob(samples), axis=(1,2)))
 
   @jax.jit
   def update(params: hk.Params, rng: PRNGKey,
@@ -128,14 +126,13 @@ def main(_):
     return loss, new_params, new_opt_state
 
   key, rng = jax.random.split(rng)
-  params = model.init(key, np.zeros((1, FLAGS.dim)))
+  params = model.init(key, np.zeros((1, FLAGS.dim)), np.zeros((1, 1)))
   print(params.keys())
 
   opt_state = optimizer.init(params)
 
   fake_cond = np.zeros((FLAGS.batch_size, 1))
-  r = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-  print("sampled points in physical space", r)
+  samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
 #   print("inverse jacobian", model.apply.inverse_jac(params, r, fake_cond))
 #   xi = inverse_fn(params, r, fake_cond)
 #   jac_fwd = model.apply.forward_jac(params, xi, fake_cond)
@@ -170,7 +167,7 @@ def main(_):
       iters.set_description_str(desc_str)
 
   plt.subplot(122)
-  r = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
+  samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
   if FLAGS.dim == 1:
     bins = 5
     plt.hist(samples[...,0], bins=bins*4, density=True)
