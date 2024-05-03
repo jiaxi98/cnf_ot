@@ -42,7 +42,6 @@ dvc-objects==0.25.0
 dvc-render==0.7.0
 dvc-studio-client==0.20.0
 dvc-task==0.4.0
-etils==1.8.0
 executing==2.0.1
 filelock==3.13.4
 flatten-dict==0.4.2
@@ -62,8 +61,6 @@ importlib_resources==6.4.0
 ipykernel==6.29.4
 ipython==8.23.0
 iterative-telemetry==0.0.8
-jax==0.4.26
-jaxlib==0.4.26
 jedi==0.19.1
 jmp==0.0.4
 joblib==1.4.0
@@ -99,7 +96,6 @@ pillow==10.3.0
 platformdirs==3.11.0
 promise==2.3
 prompt-toolkit==3.0.43
-protobuf==4.25.3
 psutil==5.9.8
 ptyprocess==0.7.0
 pure-eval==0.2.2
@@ -124,7 +120,6 @@ shtab==1.7.1
 six==1.16.0
 smmap==5.0.1
 sqltrie==0.11.0
--e git+ssh://git@github.com/jiaxi98/neural-MFG.git@67031ff55cbe05f13a1066fd7e4f2907197274de#egg=src
 stack-data==0.6.3
 tabulate==0.9.0
 tensorflow-datasets==4.9.4
