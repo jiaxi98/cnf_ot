@@ -24,9 +24,9 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer("hidden_size", 64, "Hidden size of the MLP conditioner.")
 flags.DEFINE_integer(
-  "num_bins", 10, "Number of bins to use in the rational-quadratic spline."
+  "num_bins", 5, "Number of bins to use in the rational-quadratic spline."
 )  #
-flags.DEFINE_integer("batch_size", 8192, "Batch size for training.")
+flags.DEFINE_integer("batch_size", 64, "Batch size for training.")
 flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
 flags.DEFINE_float("lr", 2e-4, "Learning rate for the optimizer.")
 flags.DEFINE_integer("epochs", 20000, "Number of training steps to run.")
@@ -98,21 +98,30 @@ def main(_):
   sample_fn = jax.jit(model.apply.sample, static_argnames=['sample_shape'])
 
   @partial(jax.jit, static_argnames=['batch_size'])
-  def kl_loss_fn(t: float, target_prob, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
+  def kl_loss_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
     """KL-divergence between the normalizing flow and the target distribution.
     
     TODO: here, we assume the p.d.f. of the target distribution is known. We can also do the case where we only access to samples from target
     distribution and use MLE to form the loss functions.
     """
-    fake_cond_ = np.ones((batch_size, 1)) * t
+    fake_cond_ = np.zeros((batch_size, 1))
     samples, log_prob = model.apply.sample_and_log_prob(
       params,
       cond=fake_cond_,
       seed=rng,
       sample_shape=(batch_size, ),
     )
+    loss = (log_prob - jnp.log(source_prob(samples))).mean()
 
-    return (log_prob - jnp.log(target_prob(samples))).mean()
+    fake_cond_ = np.ones((batch_size, 1))
+    samples, log_prob = model.apply.sample_and_log_prob(
+      params,
+      cond=fake_cond_,
+      seed=rng,
+      sample_shape=(batch_size, ),
+    )
+    loss += (log_prob - jnp.log(target_prob(samples))).mean()
+    return loss
 
   @partial(jax.jit, static_argnames=['batch_size'])
   def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
@@ -133,16 +142,11 @@ def main(_):
     integration of the kinetic energy along the interval [0, 1]
     """
     
-    loss = kl_loss_fn(
-      t=0, source_prob, params, seed=rng, sample_shape=(batch_size, )
-    ) + kl_loss_fn(
-      t=1, target_prob, params, seed=rng, sample_shape=(batch_size, )
-    )
-
+    loss = kl_loss_fn(params, rng, batch_size)
     t_batch_size = 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     for _ in range(t_batch_size):
-      loss += kinetic_loss_fn(t=t_batch[_], params, rng, batch_size)
+      loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size)
 
     return loss
 
@@ -163,7 +167,7 @@ def main(_):
     return loss, new_params, new_opt_state
 
   key, rng = jax.random.split(rng)
-  params = model.init(key, np.zeros((1, FLAGS.dim)))
+  params = model.init(key, np.zeros((1, FLAGS.dim)), np.zeros((1, 1)))
   print(params.keys())
 
   opt_state = optimizer.init(params)
@@ -193,9 +197,11 @@ def main(_):
       desc_str = f"{loss=:.2f}"
 
       key, rng = jax.random.split(rng)
-      Z, KL, ESS = eval_fn(params, key, FLAGS.test_batch_size)
-      ESS = ESS / FLAGS.test_batch_size * 100
-      desc_str += f" | {Z=:.2f} | {KL=:.2E} | {ESS=:.2f}%"
+      KL = kl_loss_fn(params, rng, FLAGS.batch_size)
+      kin = kinetic_loss_fn(0.5, params, rng, FLAGS.batch_size)
+      # Z, KL, ESS = eval_fn(params, key, FLAGS.test_batch_size)
+      # ESS = ESS / FLAGS.test_batch_size * 100
+      desc_str += f" | {KL=:.2f} | {kin=:.2f}%"
       iters.set_description_str(desc_str)
 
   plt.subplot(122)
