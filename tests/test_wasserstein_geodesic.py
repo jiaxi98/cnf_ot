@@ -15,6 +15,7 @@ from tqdm import tqdm
 
 from src.flows import RQSFlow
 from src.types import Batch, OptState, PRNGKey
+import src.utils as utils
 
 flags.DEFINE_integer(
   "flow_num_layers", 1, "Number of layers to use in the flow."
@@ -45,14 +46,6 @@ flags.DEFINE_integer("dim", 2, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
-# def kl_ess(log_model_prob, target_prob):
-#   """metrics used in the tori paper."""
-#   weights = target_prob / jnp.exp(log_model_prob)
-#   Z = jnp.mean(weights)  # normalizing constant
-#   KL = jnp.mean(log_model_prob - jnp.log(target_prob)) + jnp.log(Z)
-#   ESS = jnp.sum(weights)**2 / jnp.sum(weights**2)
-#   return Z, KL, ESS
-
 # def gaussian_distribution_sampler(
 #     prng_key: int=42,
 #     mean: jnp.ndarray=0,
@@ -60,7 +53,7 @@ FLAGS = flags.FLAGS
 #     batch_size: int=256
 #     ) -> jnp.ndarray:
 #     """
-#     TODO: should test the sampler when debugging
+#     TODO: test the sampler
 #     """
     
 #     dim = mean.shape[0]
@@ -77,6 +70,8 @@ def gaussian_2d(
     return jnp.exp(-0.5 * jnp.dot(jnp.dot((r - mean), jnp.linalg.inv(var)), (r - mean).T)) / jnp.sqrt(jnp.linalg.det(2 * jnp.pi * var))
 
 def main(_):
+
+  # model initialization
   jax.config.update("jax_enable_x64", FLAGS.use_64)
   np.random.seed(FLAGS.seed)
   rng = jax.random.PRNGKey(FLAGS.seed)
@@ -90,19 +85,29 @@ def main(_):
     periodized=False,
   )
   model = hk.without_apply_rng(hk.multi_transform(model))
-  source_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([-1,-1]), var=jnp.eye(2)))
-  target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([3,3]), var=jnp.eye(2)))
-
   forward_fn = jax.jit(model.apply.forward)
   inverse_fn = jax.jit(model.apply.inverse)
   sample_fn = jax.jit(model.apply.sample, static_argnames=['sample_shape'])
+  key, rng = jax.random.split(rng)
+  params = model.init(key, np.zeros((1, FLAGS.dim)), np.zeros((1, 1)))
+  print(params.keys())
 
+  opt_state = optimizer.init(params)
+
+  # boundary condition on density
+  source_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([-1,-1]), var=jnp.eye(2)))
+  target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([3,3]), var=jnp.eye(2)))
+
+  # loss function for training, including the KL-divergence at the boundary condition 
+  # and kinetic energy along the trajectory
   @partial(jax.jit, static_argnames=['batch_size'])
   def kl_loss_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
     """KL-divergence between the normalizing flow and the target distribution.
     
-    TODO: here, we assume the p.d.f. of the target distribution is known. We can also do the case where we only access to samples from target
-    distribution and use MLE to form the loss functions.
+    TODO: here, we assume the p.d.f. of the target distribution is known. 
+    In the case where we only access to samples from target distribution,
+    KL-divergence is not calculable and we need to shift to other integral 
+    probability metric, e.g. MMD.
     """
     fake_cond_ = np.zeros((batch_size, 1))
     samples, log_prob = model.apply.sample_and_log_prob(
@@ -125,19 +130,16 @@ def main(_):
 
   @partial(jax.jit, static_argnames=['batch_size'])
   def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
-
-    #batch_size = 2
+    """Kinetic energy along the trajectory at time t
+    """
     fake_cond_ = np.ones((batch_size, 1)) * t
     samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
-    #fake_cond_ = np.ones((2, 1)) * t
-    #sample = sample_fn(params, seed=rng, sample_shape=(2, ), cond=fake_cond_)
     xi = inverse_fn(params, samples, fake_cond_)
     velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
-    #print(velocity.shape)
-    #rint(velocity)
-    #breakpoint()
-    weight = .01
-    return jnp.mean(0.5 * velocity**2) * 2 * batch_size * weight
+    # velocity.shape = [batch_size, 2, batch_size, 1]
+    # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
+    weight = .005
+    return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2) * weight
   
   @partial(jax.jit, static_argnames=['batch_size'])
   def w_loss_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
@@ -145,7 +147,10 @@ def main(_):
 
     KL divergence between the normalizing flow at t=0 and the source distribution
     KL divergence between the normalizing flow at t=1 and the target distribution
-    integration of the kinetic energy along the interval [0, 1]
+    Monte-Carlo integration of the kinetic energy along the interval [0, 1]
+
+    TODO: one caveat of the coding here is that we do not further split the 
+    rng for sampling from CNF in kl_loss and kinetic_loss. 
     """
     
     loss = kl_loss_fn(params, rng, batch_size)
@@ -156,13 +161,6 @@ def main(_):
 
     return loss
 
-  # @partial(jax.jit, static_argnames=['batch_size'])
-  # def eval_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
-  #   samples, log_prob = model.apply.sample_and_log_prob(
-  #     params, seed=rng, sample_shape=(batch_size, )
-  #   )
-  #   return kl_ess(log_prob, target_unnorm_prob(samples))
-
   @jax.jit
   def update(params: hk.Params, rng: PRNGKey,
              opt_state: OptState) -> Tuple[Array, hk.Params, OptState]:
@@ -172,12 +170,7 @@ def main(_):
     new_params = optax.apply_updates(params, updates)
     return loss, new_params, new_opt_state
 
-  key, rng = jax.random.split(rng)
-  params = model.init(key, np.zeros((1, FLAGS.dim)), np.zeros((1, 1)))
-  print(params.keys())
-
-  opt_state = optimizer.init(params)
-
+  # plot the distribution at t=0, 1 before training
   plt.subplot(121)
   if FLAGS.dim == 1:
     bins = 5
@@ -190,6 +183,7 @@ def main(_):
     samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
     plt.scatter(samples[...,0], samples[...,1], s=1, c='b')
 
+  # training loop
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
   for step in iters:
@@ -206,6 +200,7 @@ def main(_):
       desc_str += f" | {KL=:.2f} | {kin=:.2f}"
       iters.set_description_str(desc_str)
 
+  # plot the distribution at t=0, 1 after training
   plt.subplot(122)
   if FLAGS.dim == 1:
     bins = 5
@@ -219,18 +214,22 @@ def main(_):
     plt.scatter(samples[...,0], samples[...,1], s=1, c='b')
     plt.savefig('results/fig/w1.pdf')
 
-  plt.clf()
-  t_array = [00, 0.2, 0.4, 0.6, 0.8, 1.0]
-  i = 1
-  for t in t_array:
-    plt.subplot(3, 2, i)
-    fake_cond = np.ones((FLAGS.batch_size, 1)) * t
-    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.scatter(samples[...,0], samples[...,1], s=1)
-    i += 1
-  plt.savefig('results/fig/w2.pdf')
-  breakpoint()
-
+  # plot the trajectory of the distribution and velocity field
+  #breakpoint()
+  plot_traj_and_velocity = partial(
+    utils.plot_traj_and_velocity, 
+    sample_fn=sample_fn, 
+    forward_fn=forward_fn, 
+    inverse_fn=inverse_fn, 
+    params=params, 
+    rng=rng)
+  plot_traj_and_velocity(quiver_size=0.01)
+  print('kinetic energy: ', utils.calculate_kinetic_energy(
+        sample_fn, 
+        forward_fn, 
+        inverse_fn, 
+        params, 
+        rng))
 
 if __name__ == "__main__":
   app.run(main)
