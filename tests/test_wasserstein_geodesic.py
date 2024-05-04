@@ -5,6 +5,7 @@ from typing import Iterator, Optional, Tuple
 import haiku as hk
 import jax
 import jax.numpy as jnp
+import distrax
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
@@ -25,9 +26,9 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer("hidden_size", 64, "Hidden size of the MLP conditioner.")
 flags.DEFINE_integer(
-  "num_bins", 10, "Number of bins to use in the rational-quadratic spline."
+  "num_bins", 20, "Number of bins to use in the rational-quadratic spline."
 )  #
-flags.DEFINE_integer("batch_size", 1024, "Batch size for training.")
+flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
 flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
 flags.DEFINE_float("lr", 2e-4, "Learning rate for the optimizer.")
 flags.DEFINE_integer("epochs", 2000, "Number of training steps to run.")
@@ -42,7 +43,7 @@ flags.DEFINE_enum(
 flags.DEFINE_boolean('use_64', True, 'whether to use float64')
 flags.DEFINE_boolean('plot', False, 'whether to plot resulting model density')
 
-flags.DEFINE_integer("dim", 2, "dimension of the base space")
+flags.DEFINE_integer("dim", 1, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
@@ -95,8 +96,12 @@ def main(_):
   opt_state = optimizer.init(params)
 
   # boundary condition on density
-  source_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([-1,-1]), var=jnp.eye(2)))
-  target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([3,3]), var=jnp.eye(2)))
+  # 1D case
+  source_prob = jax.vmap(distrax.Normal(loc=0, scale=1).prob)
+  target_prob = jax.vmap(distrax.Normal(loc=3, scale=1).prob)
+  # 2D case
+  # source_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([-1,-1]), var=jnp.eye(2)))
+  # target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([3,3]), var=jnp.eye(2)))
 
   # loss function for training, including the KL-divergence at the boundary condition 
   # and kinetic energy along the trajectory
@@ -138,8 +143,8 @@ def main(_):
     velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
     # velocity.shape = [batch_size, 2, batch_size, 1]
     # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
-    weight = .005
-    return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2) * weight
+    weight = .01
+    return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2) * weight * FLAGS.dim / 2
   
   @partial(jax.jit, static_argnames=['batch_size'])
   def w_loss_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
@@ -174,6 +179,11 @@ def main(_):
   plt.subplot(121)
   if FLAGS.dim == 1:
     bins = 5
+    fake_cond = np.zeros((FLAGS.batch_size, 1))
+    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
+    plt.hist(samples[...,0], bins=bins*4, density=True)
+    fake_cond = np.ones((FLAGS.batch_size, 1))
+    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
     plt.hist(samples[...,0], bins=bins*4, density=True)
   elif FLAGS.dim == 2:
     fake_cond = np.zeros((FLAGS.batch_size, 1))
@@ -204,6 +214,11 @@ def main(_):
   plt.subplot(122)
   if FLAGS.dim == 1:
     bins = 5
+    fake_cond = np.zeros((FLAGS.batch_size, 1))
+    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
+    plt.hist(samples[...,0], bins=bins*4, density=True)
+    fake_cond = np.ones((FLAGS.batch_size, 1))
+    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
     plt.hist(samples[...,0], bins=bins*4, density=True)
   elif FLAGS.dim == 2:
     fake_cond = np.zeros((FLAGS.batch_size, 1))
@@ -214,22 +229,23 @@ def main(_):
     plt.scatter(samples[...,0], samples[...,1], s=1, c='b')
     plt.savefig('results/fig/w1.pdf')
 
-  # plot the trajectory of the distribution and velocity field
-  #breakpoint()
-  plot_traj_and_velocity = partial(
-    utils.plot_traj_and_velocity, 
-    sample_fn=sample_fn, 
-    forward_fn=forward_fn, 
-    inverse_fn=inverse_fn, 
-    params=params, 
-    rng=rng)
-  plot_traj_and_velocity(quiver_size=0.01)
-  print('kinetic energy: ', utils.calculate_kinetic_energy(
-        sample_fn, 
-        forward_fn, 
-        inverse_fn, 
-        params, 
-        rng))
+    # plot the trajectory of the distribution and velocity field
+    #breakpoint()
+    plot_traj_and_velocity = partial(
+      utils.plot_traj_and_velocity, 
+      sample_fn=sample_fn, 
+      forward_fn=forward_fn, 
+      inverse_fn=inverse_fn, 
+      params=params, 
+      rng=rng)
+    plot_traj_and_velocity(quiver_size=0.01)
+    print('kinetic energy: ', utils.calculate_kinetic_energy(
+          sample_fn, 
+          forward_fn, 
+          inverse_fn, 
+          params, 
+          rng,
+          FLAGS.dim))
 
 if __name__ == "__main__":
   app.run(main)

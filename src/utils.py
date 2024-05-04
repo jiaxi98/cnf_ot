@@ -13,7 +13,8 @@ def calculate_kinetic_energy(
         forward_fn, 
         inverse_fn, 
         params: hk.Params, 
-        rng: PRNGKey):
+        rng: PRNGKey,
+        dim: int=1):
 
     t_array = jnp.linspace(0, 1, 100)
     batch_size = 1024
@@ -27,7 +28,7 @@ def calculate_kinetic_energy(
         velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
         kinetic_energy += jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2)
     
-    return kinetic_energy/100
+    return kinetic_energy/100 * dim / 2
 
 def plot_distribution_at_time(params: hk.Params, rng: PRNGKey):
     return
