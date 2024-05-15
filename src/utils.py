@@ -28,7 +28,7 @@ def calculate_kinetic_energy(
         velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
         kinetic_energy += jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2)
     
-    return kinetic_energy/100 * dim / 2
+    return kinetic_energy/100 * dim 
 
 def plot_distribution_at_time(params: hk.Params, rng: PRNGKey):
     return
@@ -70,3 +70,25 @@ def plot_traj_and_velocity(
         i += 1
     plt.savefig('results/fig/traj.pdf')
     plt.clf()
+
+def plot_1d_map(
+    forward_fn,  
+    params: hk.Params, 
+    final_mean,
+    ):
+    t_array = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    batch_size_pdf = 1024
+    fig1 = plt.figure(figsize=(10, 10))
+    ax1 = fig1.subplots(3, 2)
+    i = 0
+    for t in t_array:
+        fake_cond_ = np.ones((batch_size_pdf, 1)) * t
+        x_axis = np.linspace(-3,3,batch_size_pdf).reshape(-1,1)
+        y_axis = forward_fn(params,x_axis,fake_cond_)
+        true_y = x_axis + final_mean*t 
+        ax1[i//2, i%2].plot(x_axis,y_axis,'b')
+        ax1[i//2, i%2].plot(x_axis,true_y,'r')
+        i += 1
+    plt.savefig('results/fig/mapping_1d.pdf')
+    # plt.clf()
+    plt.show()

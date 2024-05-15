@@ -23,15 +23,15 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer(
   "mlp_num_layers", 2, "Number of layers to use in the MLP conditioner."
-)
-flags.DEFINE_integer("hidden_size", 64, "Hidden size of the MLP conditioner.")
+) # 2
+flags.DEFINE_integer("hidden_size", 16, "Hidden size of the MLP conditioner.") # 64
 flags.DEFINE_integer(
   "num_bins", 20, "Number of bins to use in the rational-quadratic spline."
-)  #
-flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
-flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
-flags.DEFINE_float("lr", 2e-4, "Learning rate for the optimizer.")
-flags.DEFINE_integer("epochs", 2000, "Number of training steps to run.")
+)  # 20
+flags.DEFINE_integer("batch_size", 2048, "Batch size for training.") #2048
+flags.DEFINE_integer("test_batch_size", 2000, "Batch size for evaluation.") #20000
+flags.DEFINE_float("lr", 1e-3, "Learning rate for the optimizer.")
+flags.DEFINE_integer("epochs", 200, "Number of training steps to run.")
 flags.DEFINE_integer("eval_frequency", 100, "How often to evaluate the model.")
 flags.DEFINE_integer("seed", 42, "random seed.")
 
@@ -96,12 +96,14 @@ def main(_):
   opt_state = optimizer.init(params)
 
   # boundary condition on density
+  if FLAGS.dim == 1:
   # 1D case
-  source_prob = jax.vmap(distrax.Normal(loc=0, scale=1).prob)
-  target_prob = jax.vmap(distrax.Normal(loc=3, scale=1).prob)
+    source_prob = jax.vmap(distrax.Normal(loc=0, scale=1).prob)
+    target_prob = jax.vmap(distrax.Normal(loc=3, scale=1).prob)
+  elif FLAGS.dim == 2: 
   # 2D case
-  # source_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([-1,-1]), var=jnp.eye(2)))
-  # target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([3,3]), var=jnp.eye(2)))
+    source_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([-1,-1]), var=jnp.eye(2)))
+    target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([3,3]), var=jnp.eye(2))) 
 
   # loss function for training, including the KL-divergence at the boundary condition 
   # and kinetic energy along the trajectory
@@ -159,10 +161,10 @@ def main(_):
     """
     
     loss = kl_loss_fn(params, rng, batch_size)
-    t_batch_size = 10
+    t_batch_size = 10 # 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     for _ in range(t_batch_size):
-      loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)
+      loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
 
     return loss
 
@@ -192,7 +194,6 @@ def main(_):
     fake_cond = np.ones((FLAGS.batch_size, 1))
     samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
     plt.scatter(samples[...,0], samples[...,1], s=1, c='b')
-
   # training loop
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
@@ -220,6 +221,23 @@ def main(_):
     fake_cond = np.ones((FLAGS.batch_size, 1))
     samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
     plt.hist(samples[...,0], bins=bins*4, density=True)
+    print('kinetic energy: ', utils.calculate_kinetic_energy(
+          sample_fn, 
+          forward_fn, 
+          inverse_fn, 
+          params, 
+          rng,
+          FLAGS.dim))
+    plt.savefig('results/fig/density_1d.pdf')
+    plt.show()
+
+    plot_1d_map = utils.plot_1d_map(
+      forward_fn=forward_fn,
+      params=params,
+      final_mean=3
+    )
+    plot_1d_map
+
   elif FLAGS.dim == 2:
     fake_cond = np.zeros((FLAGS.batch_size, 1))
     samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
@@ -228,6 +246,7 @@ def main(_):
     samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
     plt.scatter(samples[...,0], samples[...,1], s=1, c='b')
     plt.savefig('results/fig/w1.pdf')
+    plt.show()
 
     # plot the trajectory of the distribution and velocity field
     #breakpoint()
@@ -246,6 +265,7 @@ def main(_):
           params, 
           rng,
           FLAGS.dim))
+    
 
 if __name__ == "__main__":
   app.run(main)
