@@ -8,16 +8,17 @@ from matplotlib import pyplot as plt
 
 from src.types import Batch, OptState, PRNGKey
 
-def calculate_kinetic_energy(
+def calc_kinetic_energy(
         sample_fn, 
         forward_fn, 
         inverse_fn, 
         params: hk.Params, 
         rng: PRNGKey,
+        batch_size: int=4096,
+        t_size: int=1000,
         dim: int=1):
 
-    t_array = jnp.linspace(0, 1, 100)
-    batch_size = 1024
+    t_array = jnp.linspace(0, 1, t_size)
     kinetic_energy = 0
     for t in t_array:
 
@@ -28,7 +29,7 @@ def calculate_kinetic_energy(
         velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
         kinetic_energy += jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2)
     
-    return kinetic_energy/100 * dim 
+    return kinetic_energy/t_size * dim 
 
 def plot_distribution_at_time(params: hk.Params, rng: PRNGKey):
     return

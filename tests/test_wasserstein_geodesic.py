@@ -31,7 +31,7 @@ flags.DEFINE_integer(
 flags.DEFINE_integer("batch_size", 2048, "Batch size for training.") #2048
 flags.DEFINE_integer("test_batch_size", 2000, "Batch size for evaluation.") #20000
 flags.DEFINE_float("lr", 1e-3, "Learning rate for the optimizer.")
-flags.DEFINE_integer("epochs", 200, "Number of training steps to run.")
+flags.DEFINE_integer("epochs", 2000, "Number of training steps to run.")
 flags.DEFINE_integer("eval_frequency", 100, "How often to evaluate the model.")
 flags.DEFINE_integer("seed", 42, "random seed.")
 
@@ -43,7 +43,7 @@ flags.DEFINE_enum(
 flags.DEFINE_boolean('use_64', True, 'whether to use float64')
 flags.DEFINE_boolean('plot', False, 'whether to plot resulting model density')
 
-flags.DEFINE_integer("dim", 1, "dimension of the base space")
+flags.DEFINE_integer("dim", 2, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
@@ -221,7 +221,7 @@ def main(_):
     fake_cond = np.ones((FLAGS.batch_size, 1))
     samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
     plt.hist(samples[...,0], bins=bins*4, density=True)
-    print('kinetic energy: ', utils.calculate_kinetic_energy(
+    print('kinetic energy: ', utils.calc_kinetic_energy(
           sample_fn, 
           forward_fn, 
           inverse_fn, 
@@ -258,12 +258,14 @@ def main(_):
       params=params, 
       rng=rng)
     plot_traj_and_velocity(quiver_size=0.01)
-    print('kinetic energy: ', utils.calculate_kinetic_energy(
+    print('kinetic energy: ', utils.calc_kinetic_energy(
           sample_fn, 
           forward_fn, 
           inverse_fn, 
           params, 
           rng,
+          1024,
+          100,
           FLAGS.dim))
     
 
