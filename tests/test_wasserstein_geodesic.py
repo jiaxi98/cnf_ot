@@ -31,7 +31,7 @@ flags.DEFINE_integer(
 flags.DEFINE_integer("batch_size", 2048, "Batch size for training.") #2048
 flags.DEFINE_integer("test_batch_size", 2000, "Batch size for evaluation.") #20000
 flags.DEFINE_float("lr", 1e-3, "Learning rate for the optimizer.")
-flags.DEFINE_integer("epochs", 2000, "Number of training steps to run.")
+flags.DEFINE_integer("epochs", 5000, "Number of training steps to run.")
 flags.DEFINE_integer("eval_frequency", 100, "How often to evaluate the model.")
 flags.DEFINE_integer("seed", 42, "random seed.")
 
@@ -147,6 +147,25 @@ def main(_):
     # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
     weight = .01
     return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2) * weight * FLAGS.dim / 2
+
+  @partial(jax.jit, static_argnames=['batch_size'])
+  def acc_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
+    """acceleration energy along the trajectory at time t, used for regularization
+    """
+    fake_cond_ = np.ones((batch_size, 1)) * t
+    samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+    xi = inverse_fn(params, samples, fake_cond_)
+    velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
+    # velocity.shape = [batch_size, 2, batch_size, 1]
+    # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
+    
+    dt = 0.01
+    fake_cond_ = np.ones((batch_size, 1)) * (t+dt)
+    samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+    xi = inverse_fn(params, samples, fake_cond_)
+    velocity_ = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
+    #weight = .01
+    return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0] - velocity_[jnp.arange(batch_size),:,jnp.arange(batch_size),0]) * FLAGS.dim / 2
   
   @partial(jax.jit, static_argnames=['batch_size'])
   def w_loss_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
@@ -164,7 +183,7 @@ def main(_):
     t_batch_size = 10 # 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     for _ in range(t_batch_size):
-      loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
+      loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size + acc_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
 
     return loss
 
@@ -258,15 +277,18 @@ def main(_):
       params=params, 
       rng=rng)
     plot_traj_and_velocity(quiver_size=0.01)
-    print('kinetic energy: ', utils.calc_kinetic_energy(
-          sample_fn, 
-          forward_fn, 
-          inverse_fn, 
-          params, 
-          rng,
-          1024,
-          100,
-          FLAGS.dim))
+    print('kinetic energy: ', 
+      utils.calc_kinetic_energy(
+        sample_fn, 
+        forward_fn, 
+        inverse_fn, 
+        params, 
+        rng,
+        dim=FLAGS.dim)
+    )
+    
+    print('kl loss: ',
+      kl_loss_fn(params, rng, FLAGS.batch_size))
     
 
 if __name__ == "__main__":
