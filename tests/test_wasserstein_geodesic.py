@@ -43,7 +43,7 @@ flags.DEFINE_enum(
 flags.DEFINE_boolean('use_64', True, 'whether to use float64')
 flags.DEFINE_boolean('plot', False, 'whether to plot resulting model density')
 
-flags.DEFINE_integer("dim", 2, "dimension of the base space")
+flags.DEFINE_integer("dim", 1, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
@@ -98,8 +98,17 @@ def main(_):
   # boundary condition on density
   if FLAGS.dim == 1:
   # 1D case
-    source_prob = jax.vmap(distrax.Normal(loc=0, scale=1).prob)
-    target_prob = jax.vmap(distrax.Normal(loc=3, scale=1).prob)
+
+    # Gaussian source and target
+    # source_prob = jax.vmap(distrax.Normal(loc=0, scale=1).prob)
+    # target_prob = jax.vmap(distrax.Normal(loc=3, scale=1).prob)
+
+    def source_prob_(r):
+      return distrax.Normal(loc=0, scale=1).prob(r) * .3 + distrax.Normal(loc=4, scale=1).prob(r) * .7
+    
+    source_prob = jax.vmap(source_prob_)
+    target_prob = jax.vmap(distrax.Normal(loc=2, scale=1).prob)
+
   elif FLAGS.dim == 2: 
   # 2D case
     source_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([-1,-1]), var=jnp.eye(2)))
@@ -180,10 +189,10 @@ def main(_):
     """
     
     loss = kl_loss_fn(params, rng, batch_size)
-    t_batch_size = 10 # 10
-    t_batch = jax.random.uniform(rng, (t_batch_size, ))
-    for _ in range(t_batch_size):
-      loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size + acc_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
+    # t_batch_size = 10 # 10
+    # t_batch = jax.random.uniform(rng, (t_batch_size, ))
+    # for _ in range(t_batch_size):
+    #   loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size + acc_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
 
     return loss
 
