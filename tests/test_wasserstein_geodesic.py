@@ -70,6 +70,11 @@ def gaussian_2d(
 
     return jnp.exp(-0.5 * jnp.dot(jnp.dot((r - mean), jnp.linalg.inv(var)), (r - mean).T)) / jnp.sqrt(jnp.linalg.det(2 * jnp.pi * var))
 
+def potential_fn(
+    r: jnp.ndarray,
+) -> jnp.ndarray:
+  return jnp.sum(r**2, axis=1)/2
+
 def main(_):
 
   # model initialization
@@ -94,6 +99,7 @@ def main(_):
   print(params.keys())
 
   opt_state = optimizer.init(params)
+  bins = 25
 
   # boundary condition on density
   if FLAGS.dim == 1:
@@ -117,7 +123,7 @@ def main(_):
   # loss function for training, including the KL-divergence at the boundary condition 
   # and kinetic energy along the trajectory
   @partial(jax.jit, static_argnames=['batch_size'])
-  def kl_loss_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
+  def kl_loss_fn(params: hk.Params, rng: PRNGKey, cond, target_prob_fn, batch_size: int) -> Array:
     """KL-divergence between the normalizing flow and the target distribution.
     
     TODO: here, we assume the p.d.f. of the target distribution is known. 
@@ -125,24 +131,22 @@ def main(_):
     KL-divergence is not calculable and we need to shift to other integral 
     probability metric, e.g. MMD.
     """
-    fake_cond_ = np.zeros((batch_size, 1))
+    
+    breakpoint()
+    fake_cond_ = np.ones((batch_size, 1)) * cond
     samples, log_prob = model.apply.sample_and_log_prob(
       params,
       cond=fake_cond_,
       seed=rng,
       sample_shape=(batch_size, ),
     )
-    loss = (log_prob - jnp.log(source_prob(samples))).mean()
+    return (log_prob - jnp.log(target_prob_fn(samples))).mean()
 
-    fake_cond_ = np.ones((batch_size, 1))
-    samples, log_prob = model.apply.sample_and_log_prob(
-      params,
-      cond=fake_cond_,
-      seed=rng,
-      sample_shape=(batch_size, ),
-    )
-    loss += (log_prob - jnp.log(target_prob(samples))).mean()
-    return loss
+  @partial(jax.jit, static_argnames=['batch_size'])
+  def double_kl_loss_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
+
+    return kl_loss_fn(params, rng, 0, source_prob, batch_size) + \
+      kl_loss_fn(params, rng, 1, target_prob, batch_size)
 
   @partial(jax.jit, static_argnames=['batch_size'])
   def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
@@ -177,6 +181,18 @@ def main(_):
     return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0] - velocity_[jnp.arange(batch_size),:,jnp.arange(batch_size),0]) * FLAGS.dim / 2
   
   @partial(jax.jit, static_argnames=['batch_size'])
+  def potential_loss_fn(params: hk.Params, rng: PRNGKey, cond, potential_fn, batch_size: int) -> Array:
+    
+    fake_cond_ = np.ones((batch_size, 1)) * cond
+    samples, _ = model.apply.sample_and_log_prob(
+      params,
+      cond=fake_cond_,
+      seed=rng,
+      sample_shape=(batch_size, ),
+    )
+    return potential_fn(samples).mean()
+
+  @partial(jax.jit, static_argnames=['batch_size'])
   def w_loss_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
     """Loss of the Wasserstein gradient flow, including:
 
@@ -188,19 +204,35 @@ def main(_):
     rng for sampling from CNF in kl_loss and kinetic_loss. 
     """
     
-    loss = kl_loss_fn(params, rng, batch_size)
+    loss = double_kl_loss_fn(params, rng, batch_size)
     # t_batch_size = 10 # 10
     # t_batch = jax.random.uniform(rng, (t_batch_size, ))
     # for _ in range(t_batch_size):
     #   loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size + acc_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
 
     return loss
+  
+  @partial(jax.jit, static_argnames=['batch_size'])
+  def mfg_loss_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
+    
+    breakpoint()
+    fake_cond_ = np.ones((batch_size, 1)) * 0
+    samples, log_prob = model.apply.sample_and_log_prob(
+      params,
+      cond=fake_cond_,
+      seed=rng,
+      sample_shape=(batch_size, ),
+    )
+    loss =  (log_prob - jnp.log(source_prob(samples))).mean()
+    return loss + potential_loss_fn(params, rng, 1, potential_fn, batch_size)
+    return kl_loss_fn(params, rng, 0, source_prob, batch_size) + \
+      potential_loss_fn(params, rng, 1, potential_fn, batch_size)
 
   @jax.jit
   def update(params: hk.Params, rng: PRNGKey,
              opt_state: OptState) -> Tuple[Array, hk.Params, OptState]:
     """Single SGD update step."""
-    loss, grads = jax.value_and_grad(w_loss_fn)(params, rng, FLAGS.batch_size)
+    loss, grads = jax.value_and_grad(mfg_loss_fn)(params, rng, FLAGS.batch_size)
     updates, new_opt_state = optimizer.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return loss, new_params, new_opt_state
@@ -208,7 +240,6 @@ def main(_):
   # plot the distribution at t=0, 1 before training
   plt.subplot(121)
   if FLAGS.dim == 1:
-    bins = 5
     fake_cond = np.zeros((FLAGS.batch_size, 1))
     samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
     plt.hist(samples[...,0], bins=bins*4, density=True)
@@ -242,7 +273,6 @@ def main(_):
   # plot the distribution at t=0, 1 after training
   plt.subplot(122)
   if FLAGS.dim == 1:
-    bins = 5
     fake_cond = np.zeros((FLAGS.batch_size, 1))
     samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
     plt.hist(samples[...,0], bins=bins*4, density=True)
