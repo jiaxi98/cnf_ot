@@ -28,8 +28,8 @@ flags.DEFINE_integer("hidden_size", 16, "Hidden size of the MLP conditioner.") #
 flags.DEFINE_integer(
   "num_bins", 20, "Number of bins to use in the rational-quadratic spline."
 )  # 20
-flags.DEFINE_integer("batch_size", 2048, "Batch size for training.") #2048
-flags.DEFINE_integer("test_batch_size", 2000, "Batch size for evaluation.") #20000
+flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
+flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
 flags.DEFINE_float("lr", 1e-3, "Learning rate for the optimizer.")
 flags.DEFINE_integer("epochs", 5000, "Number of training steps to run.")
 flags.DEFINE_integer("eval_frequency", 100, "How often to evaluate the model.")
@@ -43,7 +43,7 @@ flags.DEFINE_enum(
 flags.DEFINE_boolean('use_64', True, 'whether to use float64')
 flags.DEFINE_boolean('plot', False, 'whether to plot resulting model density')
 
-flags.DEFINE_integer("dim", 1, "dimension of the base space")
+flags.DEFINE_integer("dim", 2, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
@@ -104,8 +104,6 @@ def main(_):
 
   # boundary condition on density
   if FLAGS.dim == 1:
-  # 1D case
-
     if FLAGS.case == 'density fit':
         # Gaussian source
         # source_prob = jax.vmap(distrax.Normal(loc=0, scale=1).prob)
@@ -125,9 +123,13 @@ def main(_):
       target_prob = jax.vmap(distrax.Normal(loc=2, scale=1).prob)
 
   elif FLAGS.dim == 2: 
-  # 2D case
-    source_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([-1,-1]), var=jnp.eye(2)))
-    target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([3,3]), var=jnp.eye(2))) 
+    if FLAGS.case == 'density fit':
+        source_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([-1,-1]), var=jnp.eye(2)))
+        target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([3,3]), var=jnp.eye(2))) 
+    elif FLAGS.case == 'mfg':
+      beta = 1
+      source_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([0,0]), var=jnp.eye(2)))
+      target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([-1,-1]), var=jnp.eye(2)))
 
   # definition of loss functions
   @partial(jax.jit, static_argnames=['batch_size'])
@@ -235,10 +237,10 @@ def main(_):
         # - jax.vmap(jax.grad(partial(log_prob_fn, params, cond=fake_cond_)))(samples)/beta
       # velocity.shape = [batch_size, DIM, batch_size, 1]
       # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
-      weight = .01
+      weight = 1
       return jnp.mean(velocity**2) * weight * FLAGS.dim / 2
 
-    loss = kl_loss_fn(params, rng, 0, batch_size) + potential_loss_fn(params, rng, 1, batch_size)
+    loss = 10*kl_loss_fn(params, rng, 0, batch_size) + potential_loss_fn(params, rng, 1, batch_size)
     t_batch_size = 10 # 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     for _ in range(t_batch_size):
@@ -349,17 +351,18 @@ def main(_):
     print('kl loss: ',
       kl_loss_fn(params, rng, FLAGS.batch_size))
     
-  if FLAGS.case == 'mfg':
+  if FLAGS.case == 'mfg' and FLAGS.dim == 1:
     plt.clf()
     t = jnp.linspace(0, 1, 6)
     for i in range(2):
       for j in range(3):
         plt.subplot(2,3,i*3+j+1)
-        fake_cond = np.ones((FLAGS.batch_size, 1)) * t[i*3+j]
-        samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
+        fake_cond = np.ones((FLAGS.test_batch_size, 1)) * t[i*3+j]
+        samples = sample_fn(params, seed=key, sample_shape=(FLAGS.test_batch_size, ), cond=fake_cond)
         plt.hist(samples[...,0], bins=bins*4, density=True)
         x = jnp.linspace(-5, 5, 1000)
-        rho = jax.vmap(distrax.Normal(loc=0, scale=beta/jnp.sqrt(2*(2-t[i*3+j]))).prob)(x)
+        print('scale of Gaussian: {:.4f}'.format(jnp.sqrt(2*(2-t[i*3+j]))))
+        rho = jax.vmap(distrax.Normal(loc=0, scale=jnp.sqrt(beta*2*(2-t[i*3+j]))).prob)(x)
         plt.plot(x, rho, label=r'$\rho_*$')
         plt.legend()
     plt.savefig('results/fig/mfg.pdf')
