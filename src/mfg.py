@@ -43,7 +43,7 @@ flags.DEFINE_enum(
 flags.DEFINE_boolean('use_64', True, 'whether to use float64')
 flags.DEFINE_boolean('plot', False, 'whether to plot resulting model density')
 
-flags.DEFINE_integer("dim", 2, "dimension of the base space")
+flags.DEFINE_integer("dim", 1, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
@@ -361,11 +361,29 @@ def main(_):
         samples = sample_fn(params, seed=key, sample_shape=(FLAGS.test_batch_size, ), cond=fake_cond)
         plt.hist(samples[...,0], bins=bins*4, density=True)
         x = jnp.linspace(-5, 5, 1000)
-        print('scale of Gaussian: {:.4f}'.format(jnp.sqrt(2*(2-t[i*3+j]))))
         rho = jax.vmap(distrax.Normal(loc=0, scale=jnp.sqrt(beta*2*(2-t[i*3+j]))).prob)(x)
         plt.plot(x, rho, label=r'$\rho_*$')
         plt.legend()
     plt.savefig('results/fig/mfg.pdf')
+    plt.clf()
+
+    kinetic_err = []
+    t_array = jnp.linspace(0, 1, 100)
+    batch_size = 1000
+    for t in t_array:
+      fake_cond_ = np.ones((batch_size, 1)) * t
+      samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+      xi = inverse_fn(params, samples, fake_cond_)
+      velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)[jnp.arange(batch_size),:,jnp.arange(batch_size),0]
+      plt.scatter(samples, velocity, label='t = {:.2f}'.format(t))
+      plt.savefig('results/fig/{}.pdf'.format(t))
+      plt.clf()
+      ground_truth = -jnp.sqrt(1/8/(2-t)) * samples
+      kinetic_err.append(jnp.mean((velocity - ground_truth)**2))
+    plt.plot(kinetic_err, label='kinetic error')
+    plt.legend()
+    plt.savefig('results/fig/mfg_kin.pdf')
+    breakpoint()
 
 if __name__ == "__main__":
   app.run(main)
