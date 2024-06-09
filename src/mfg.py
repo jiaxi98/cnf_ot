@@ -239,7 +239,7 @@ def main(_):
       # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
       return jnp.mean(velocity**2) * FLAGS.dim / 2
 
-    loss = 20*kl_loss_fn(params, rng, 0, batch_size) + potential_loss_fn(params, rng, 1, batch_size)
+    loss = 50*kl_loss_fn(params, rng, 0, batch_size) + potential_loss_fn(params, rng, 1, batch_size)
     t_batch_size = 10 # 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     for _ in range(t_batch_size):
