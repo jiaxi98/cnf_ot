@@ -32,6 +32,7 @@ class Autoregressive(ConditionalBijector):
     event_shape: ShapeT = (1, ),
     cond_shape: ShapeT = (0, ),
     permutation: Optional[Sequence[int]] = None,
+    name: str = "",
   ):
     self._conditioner = conditioner
     self._bijector = bijector
@@ -39,6 +40,7 @@ class Autoregressive(ConditionalBijector):
     self._event_ndims = 1  # autoregressive
     self.permutation = permutation or list(range(sum(event_shape)))
     self.is_conditional = sum(cond_shape) > 0
+    self._name = name
     super().__init__(event_ndims_in=self._event_ndims, cond_shape=cond_shape)
 
   @property
@@ -64,10 +66,13 @@ class Autoregressive(ConditionalBijector):
     ndims = x.shape[-1]
     for d in range(ndims):
       i = self.permutation[d]
+      layer_name = f"{self._name}_d{d}"
       if i == 0:
-        params_i = self._conditioner(c if self.is_conditional else None)
+        params_i = self._conditioner(
+          c if self.is_conditional else None, layer_name
+        )
       else:
-        params_i = self._conditioner(x[..., self.permutation[:d]], d)
+        params_i = self._conditioner(x[..., self.permutation[:d]], layer_name)
       x_i = x[..., i:i + 1]
       y_i, logdet_i = self._inner_bijector(params_i).forward_and_log_det(x_i)
       y = y.at[..., i:i + 1].set(y_i)
@@ -87,10 +92,13 @@ class Autoregressive(ConditionalBijector):
     ndims = y.shape[-1]
     for d in range(ndims):
       i = self.permutation[d]
+      layer_name = f"{self._name}_d{d}"
       if i == 0:
-        params_i = self._conditioner(c if self.is_conditional else None)
+        params_i = self._conditioner(
+          c if self.is_conditional else None, layer_name
+        )
       else:
-        params_i = self._conditioner(x[..., self.permutation[:d]], d)
+        params_i = self._conditioner(x[..., self.permutation[:d]], layer_name)
       y_i = y[..., i:i + 1]
       x_i, logdet_i = self._inner_bijector(params_i).inverse_and_log_det(y_i)
       x = x.at[..., i:i + 1].set(x_i)

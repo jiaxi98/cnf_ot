@@ -19,10 +19,10 @@ from src.types import Batch, OptState, PRNGKey
 import src.utils as utils
 
 flags.DEFINE_integer(
-  "flow_num_layers", 1, "Number of layers to use in the flow."
+  "flow_num_layers", 3, "Number of layers to use in the flow."
 )
 flags.DEFINE_integer(
-  "mlp_num_layers", 2, "Number of layers to use in the MLP conditioner."
+  "mlp_num_layers", 1, "Number of layers to use in the MLP conditioner."
 ) # 2
 flags.DEFINE_integer("hidden_size", 16, "Hidden size of the MLP conditioner.") # 64
 flags.DEFINE_integer(
@@ -31,7 +31,7 @@ flags.DEFINE_integer(
 flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
 flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
 flags.DEFINE_float("lr", 1e-3, "Learning rate for the optimizer.")
-flags.DEFINE_integer("epochs", 200000, "Number of training steps to run.")
+flags.DEFINE_integer("epochs", 20000, "Number of training steps to run.")
 flags.DEFINE_integer("eval_frequency", 100, "How often to evaluate the model.")
 flags.DEFINE_integer("seed", 42, "random seed.")
 
@@ -239,7 +239,7 @@ def main(_):
       # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
       return jnp.mean(velocity**2) * FLAGS.dim / 2
 
-    loss = 50*kl_loss_fn(params, rng, 0, batch_size) + potential_loss_fn(params, rng, 1, batch_size)
+    loss = 20*kl_loss_fn(params, rng, 0, batch_size) + potential_loss_fn(params, rng, 1, batch_size)
     t_batch_size = 10 # 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     for _ in range(t_batch_size):

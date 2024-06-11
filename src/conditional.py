@@ -95,7 +95,10 @@ class ConditionalChain(ConditionalBijector):
     """
     if not bijectors:
       raise ValueError("The sequence of bijectors cannot be empty.")
-    self._bijectors = [conversion.as_bijector(b) for b in bijectors]
+    self._bijectors = [
+      b if isinstance(b, ConditionalBijector) else
+      AsConditional(conversion.as_bijector(b)) for b in bijectors
+    ]
 
     # Check that neighboring bijectors in the chain have compatible dimensions
     for i, (outer, inner) in enumerate(
@@ -219,6 +222,28 @@ class ConditionalInverse(ConditionalBijector):
     if type(other) is ConditionalInverse:  # pylint: disable=unidiomatic-typecheck
       return self.bijector.same_as(other.bijector)
     return False
+
+
+class AsConditional(ConditionalBijector):
+  """Wrap around a normal bijector and make it trivally conditional"""
+
+  def __init__(self, bijector: BijectorLike):
+    self._bijector = conversion.as_bijector(bijector)
+    super().__init__(
+      cond_shape=(0, ),
+      event_ndims_in=self._bijector.event_ndims_in,
+      event_ndims_out=self._bijector.event_ndims_out,
+      is_constant_jacobian=self._bijector.is_constant_jacobian,
+      is_constant_log_det=self._bijector.is_constant_log_det,
+    )
+
+  def forward_and_log_det(self, x: Array, c: Array) -> Tuple[Array, Array]:
+    """Computes y = f(x,c) and log|det J(f)(x,c)|."""
+    return self._bijector.forward_and_log_det(x)
+
+  def inverse_and_log_det(self, y: Array, c: Array) -> Tuple[Array, Array]:
+    """Computes x = f^{-1}(y,c) and log|det J(f^{-1})(y,c)|."""
+    return self._bijector.inverse_and_log_det(y)
 
 
 class ConditionalTransformed(Transformed):
