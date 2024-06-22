@@ -30,8 +30,8 @@ flags.DEFINE_integer(
 )  # 20
 flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
 flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
-flags.DEFINE_float("lr", 1e-3, "Learning rate for the optimizer.")
-flags.DEFINE_integer("epochs", 20000, "Number of training steps to run.")
+flags.DEFINE_float("lr", 1e-4, "Learning rate for the optimizer.")
+flags.DEFINE_integer("epochs", 200000, "Number of training steps to run.")
 flags.DEFINE_integer("eval_frequency", 100, "How often to evaluate the model.")
 flags.DEFINE_integer("seed", 42, "random seed.")
 
@@ -368,7 +368,7 @@ def main(_):
 
     kinetic_err = []
     t_array = jnp.linspace(0, 1, 100)
-    batch_size = 5000
+    batch_size = 1000
     for t in t_array:
       fake_cond_ = np.ones((batch_size, 1)) * t
       samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)

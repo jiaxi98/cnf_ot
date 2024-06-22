@@ -107,8 +107,8 @@ def make_flow_model(
   def bijector_fn(params: Array):
     return distrax.RationalQuadraticSpline(
       params,
-      range_min=base_range[0] if periodized else 0.,
-      range_max=base_range[1] if periodized else 1.,
+      range_min=0. if periodized else -10.,
+      range_max=2 * np.pi if periodized else 10.,
       # TODO: the tori paper uses 1e-3, check whether the default 1e-4 is better
       min_knot_slope=1e-4,
       boundary_slopes='circular' if periodized else 'unconstrained'
@@ -137,50 +137,6 @@ def make_flow_model(
       )
       layers.append(layer)
 
-  else:
-    if periodized:
-      first_layer_params = hk.get_parameter(
-        "first",
-        shape=(np.prod(event_shape), num_bijector_params),
-        init=hk.initializers.RandomNormal(
-          stddev=1. / math.sqrt(num_bijector_params)
-        ),
-      )
-      layers.append(distrax.Block(bijector_fn(first_layer_params), 1))
-
-    if periodized:
-      # override num_layers
-      # TODO: why when > 1 it converges to uniform?
-      # num_layers = event_dim - 1
-      mask = jnp.zeros(event_dim).astype(bool)
-      # mask = mask.at[0].set(True)
-    else:
-      # Alternating binary mask.
-      mask = jnp.arange(0, event_dim) % 2
-      mask = jnp.reshape(mask, event_shape)
-      mask = mask.astype(bool)
-
-    mask = jnp.arange(0, event_dim) % 2
-    mask = jnp.reshape(mask, event_shape)
-    mask = mask.astype(bool)
-
-    # use x to condition y and z
-    for l in range(num_layers):
-      if periodized:
-        mask = jnp.eye(event_dim)[l % event_dim].astype(bool)
-      layer = distrax.MaskedCoupling(
-        mask=mask,
-        bijector=bijector_fn,
-        conditioner=make_conditioner(
-          event_shape, hidden_sizes, num_bijector_params, periodized
-        )
-      )
-      layers.append(layer)
-
-      if not periodized:
-        # Flip the mask after each layer.
-        mask = jnp.logical_not(mask)
-
   if B is not None:
     layer = distrax.UnconstrainedAffine(matrix=B.T, bias=np.zeros(B.shape[0]))
     layers.append(layer)
@@ -188,9 +144,13 @@ def make_flow_model(
   # We invert the flow so that the `forward` method is called with `log_prob`.
   flow = ConditionalInverse(ConditionalChain(layers))
   base_distribution = distrax.Independent(
-    distrax.Uniform(
-      low=jnp.ones(event_shape) * (base_range[0] if periodized else 0.),
-      high=jnp.ones(event_shape) * (base_range[1] if periodized else 1.)
+    # distrax.Uniform(
+    #   low=jnp.zeros(event_shape),
+    #   high=jnp.ones(event_shape) * (2 * np.pi if periodized else 1.)
+    # ),
+    distrax.Normal(
+      loc=jnp.zeros(event_shape),
+      scale=jnp.ones(event_shape)
     ),
     reinterpreted_batch_ndims=len(event_shape)
   )
