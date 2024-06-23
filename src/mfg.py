@@ -19,7 +19,7 @@ from src.types import Batch, OptState, PRNGKey
 import src.utils as utils
 
 flags.DEFINE_integer(
-  "flow_num_layers", 3, "Number of layers to use in the flow."
+  "flow_num_layers", 1, "Number of layers to use in the flow."
 )
 flags.DEFINE_integer(
   "mlp_num_layers", 1, "Number of layers to use in the MLP conditioner."
@@ -31,7 +31,7 @@ flags.DEFINE_integer(
 flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
 flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
 flags.DEFINE_float("lr", 1e-4, "Learning rate for the optimizer.")
-flags.DEFINE_integer("epochs", 200000, "Number of training steps to run.")
+flags.DEFINE_integer("epochs", 100000, "Number of training steps to run.")
 flags.DEFINE_integer("eval_frequency", 100, "How often to evaluate the model.")
 flags.DEFINE_integer("seed", 42, "random seed.")
 
@@ -239,7 +239,7 @@ def main(_):
       # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
       return jnp.mean(velocity**2) * FLAGS.dim / 2
 
-    loss = 20*kl_loss_fn(params, rng, 0, batch_size) + potential_loss_fn(params, rng, 1, batch_size)
+    loss = 10*kl_loss_fn(params, rng, 0, batch_size) + potential_loss_fn(params, rng, 1, batch_size)
     t_batch_size = 10 # 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     for _ in range(t_batch_size):
@@ -284,7 +284,10 @@ def main(_):
 
       key, rng = jax.random.split(rng)
       # density fit
-      KL = density_fit_loss_fn(params, key, FLAGS.batch_size)
+      if FLAGS.case == 'mfg':
+        KL = kl_loss_fn(params, rng, 0, FLAGS.batch_size)
+      else:
+        KL = density_fit_loss_fn(params, key, FLAGS.batch_size)
       desc_str += f" | {KL=:.2f} "
       # wasserstein distance
       # KL = kl_loss_fn(params, rng, FLAGS.batch_size)
@@ -367,7 +370,7 @@ def main(_):
     plt.clf()
 
     kinetic_err = []
-    t_array = jnp.linspace(0, 1, 100)
+    t_array = jnp.linspace(0, 1, 101)
     batch_size = 1000
     for t in t_array:
       fake_cond_ = np.ones((batch_size, 1)) * t
@@ -378,8 +381,9 @@ def main(_):
       kinetic_err.append(jnp.mean((velocity - ground_truth)**2))
       plt.scatter(samples, velocity, c='b', label='estimated', s=.1)
       plt.scatter(samples, ground_truth, c='r', label='ground truth', s=.1)
+      plt.legend()
       plt.title('t = {:.2f}'.format(t))
-      plt.savefig('results/fig/{}.pdf'.format(t))
+      plt.savefig('results/fig/{:.2f}.pdf'.format(t))
       plt.clf()
     plt.plot(kinetic_err, label='kinetic error')
     plt.legend()
