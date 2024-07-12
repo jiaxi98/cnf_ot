@@ -22,7 +22,7 @@ flags.DEFINE_integer(
   "flow_num_layers", 1, "Number of layers to use in the flow."
 )
 flags.DEFINE_integer(
-  "mlp_num_layers", 1, "Number of layers to use in the MLP conditioner."
+  "mlp_num_layers", 3, "Number of layers to use in the MLP conditioner."
 ) # 2
 flags.DEFINE_integer("hidden_size", 16, "Hidden size of the MLP conditioner.") # 64
 flags.DEFINE_integer(
@@ -30,7 +30,7 @@ flags.DEFINE_integer(
 )  # 20
 flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
 flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
-flags.DEFINE_float("lr", 1e-4, "Learning rate for the optimizer.")
+flags.DEFINE_float("lr", 1e-3, "Learning rate for the optimizer.")
 flags.DEFINE_integer("epochs", 100000, "Number of training steps to run.")
 flags.DEFINE_integer("eval_frequency", 100, "How often to evaluate the model.")
 flags.DEFINE_integer("seed", 42, "random seed.")
@@ -239,7 +239,7 @@ def main(_):
       # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
       return jnp.mean(velocity**2) * FLAGS.dim / 2
 
-    loss = 10*kl_loss_fn(params, rng, 0, batch_size) + potential_loss_fn(params, rng, 1, batch_size)
+    loss = 20*kl_loss_fn(params, rng, 0, batch_size) + potential_loss_fn(params, rng, 1, batch_size)
     t_batch_size = 10 # 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     for _ in range(t_batch_size):
@@ -280,7 +280,7 @@ def main(_):
     loss_hist.append(loss)
 
     if step % FLAGS.eval_frequency == 0:
-      desc_str = f"{loss=:.2f}"
+      desc_str = f"{loss=:.4f}"
 
       key, rng = jax.random.split(rng)
       # density fit
@@ -288,7 +288,7 @@ def main(_):
         KL = kl_loss_fn(params, rng, 0, FLAGS.batch_size)
       else:
         KL = density_fit_loss_fn(params, key, FLAGS.batch_size)
-      desc_str += f" | {KL=:.2f} "
+      desc_str += f" | {KL=:.4f} "
       # wasserstein distance
       # KL = kl_loss_fn(params, rng, FLAGS.batch_size)
       # kin = kinetic_loss_fn(0.5, params, rng, FLAGS.batch_size)
@@ -379,15 +379,40 @@ def main(_):
       velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)[jnp.arange(batch_size),:,jnp.arange(batch_size),0]
       ground_truth = -jnp.sqrt(1/8/(2-t)) * samples
       kinetic_err.append(jnp.mean((velocity - ground_truth)**2))
-      plt.scatter(samples, velocity, c='b', label='estimated', s=.1)
+      plt.figure(figsize=(4, 2))
+      plt.scatter(samples, velocity, c='b', label='compute', s=.1)
       plt.scatter(samples, ground_truth, c='r', label='ground truth', s=.1)
       plt.legend()
       plt.title('t = {:.2f}'.format(t))
       plt.savefig('results/fig/{:.2f}.pdf'.format(t))
       plt.clf()
-    plt.plot(kinetic_err, label='kinetic error')
+    plt.plot(t_array, kinetic_err, label=r'$\left\| \dot{x} - \dot{x}_* \right\|^2$')
     plt.legend()
     plt.savefig('results/fig/mfg_kin.pdf')
+    breakpoint()
+
+    def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
+      """Kinetic energy along the trajectory at time t, notice that this contains not only the velocity but also
+      the score function
+      """
+      fake_cond_ = np.ones((batch_size, 1)) * t
+      samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+      xi = inverse_fn(params, samples, fake_cond_)
+      velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)[jnp.arange(batch_size),:,jnp.arange(batch_size),0] \
+        + jax.jacfwd(partial(log_prob_fn, params, cond=fake_cond_))(samples)[jnp.arange(batch_size),jnp.arange(batch_size)]/beta
+        # - jax.vmap(jax.grad(partial(log_prob_fn, params, cond=fake_cond_)))(samples)/beta
+      # velocity.shape = [batch_size, DIM, batch_size, 1]
+      # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
+      return jnp.mean(velocity**2) * FLAGS.dim / 2
+
+    batch_size = FLAGS.batch_size
+    loss = potential_loss_fn(params, rng, 1, batch_size)
+    t_batch_size = 100 # 10
+    t_batch = jax.random.uniform(rng, (t_batch_size, ))
+    for _ in range(t_batch_size):
+        loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
+    print("loss: {:.4f}".format(loss))
+
     breakpoint()
 
 if __name__ == "__main__":
