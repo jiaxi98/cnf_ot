@@ -31,12 +31,12 @@ flags.DEFINE_integer(
 flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
 flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
 flags.DEFINE_float("lr", 1e-3, "Learning rate for the optimizer.")
-flags.DEFINE_integer("epochs", 20000, "Number of training steps to run.")
+flags.DEFINE_integer("epochs", 50000, "Number of training steps to run.")
 flags.DEFINE_integer("eval_frequency", 100, "How often to evaluate the model.")
 flags.DEFINE_integer("seed", 42, "random seed.")
 
 flags.DEFINE_enum(
-  "case", "wasserstein", ["density fit", "wasserstein", "mfg"],
+  "case", "density fit", ["density fit", "wasserstein", "mfg"],
   "problem type"
 )
 
@@ -69,6 +69,17 @@ def gaussian_2d(
 ) -> jnp.ndarray:
 
     return jnp.exp(-0.5 * jnp.dot(jnp.dot((r - mean), jnp.linalg.inv(var)), (r - mean).T)) / jnp.sqrt(jnp.linalg.det(2 * jnp.pi * var))
+
+def gaussian_mixture_2d(
+    r: jnp.ndarray,
+) -> jnp.ndarray:
+
+    R = 10
+    rho1 = partial(gaussian_2d, mean=jnp.array([0,R]), var=jnp.eye(2))
+    rho2 = partial(gaussian_2d, mean=jnp.array([R,0]), var=jnp.eye(2))
+    rho3 = partial(gaussian_2d, mean=jnp.array([0,-R]), var=jnp.eye(2))
+    rho4 = partial(gaussian_2d, mean=jnp.array([-R,0]), var=jnp.eye(2))
+    return (rho1(r) + rho2(r) + rho3(r) + rho4(r))/4
 
 def potential_fn(
     r: jnp.ndarray,
@@ -126,10 +137,14 @@ def main(_):
     beta = 1
     var1 = 1
     var2 = 1
-    mu1 = jnp.array([-5,-5])
-    mu2 = jnp.array([5,5])
-    source_prob = jax.vmap(partial(gaussian_2d, mean=mu1, var=jnp.eye(2)*var1))
-    target_prob = jax.vmap(partial(gaussian_2d, mean=mu2, var=jnp.eye(2)*var2))
+    mu1 = jnp.array([-3,-4])
+    mu2 = jnp.array([3,4])
+    # # linear transport calculation case
+    # source_prob = jax.vmap(partial(gaussian_2d, mean=mu1, var=jnp.eye(2)*var1))
+    # target_prob = jax.vmap(partial(gaussian_2d, mean=mu2, var=jnp.eye(2)*var2))
+    # multi-to-one case
+    source_prob = jax.vmap(gaussian_mixture_2d)
+    target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([0,0]), var=jnp.eye(2)*var2))
 
   # definition of loss functions
   @partial(jax.jit, static_argnames=['batch_size'])
@@ -274,7 +289,7 @@ def main(_):
   def update(params: hk.Params, rng: PRNGKey, lambda_,
              opt_state: OptState) -> Tuple[Array, hk.Params, OptState]:
     """Single SGD update step."""
-    loss, grads = jax.value_and_grad(wasserstein_loss_fn)(params, rng, lambda_, FLAGS.batch_size)
+    loss, grads = jax.value_and_grad(density_fit_loss_fn)(params, rng, lambda_, FLAGS.batch_size)
     updates, new_opt_state = optimizer.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return loss, new_params, new_opt_state
@@ -299,11 +314,11 @@ def main(_):
   # training loop
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
-  lambda_ = 1e2
+  lambda_ = 1e3
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, lambda_, opt_state)
-    lambda_ += density_fit_loss_fn(params, rng, FLAGS.batch_size)
+    #lambda_ += density_fit_loss_fn(params, rng, FLAGS.batch_size)
     loss_hist.append(loss)
 
     if step % FLAGS.eval_frequency == 0:
@@ -357,7 +372,17 @@ def main(_):
     )
     plot_1d_map
 
-  elif FLAGS.dim == 2:
+  elif FLAGS.dim == 2 and FLAGS.case == 'density fit':
+    plt.clf()
+    fake_cond = np.zeros((FLAGS.batch_size, 1))
+    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
+    plt.scatter(samples[...,0], samples[...,1], s=3, c='r')
+    fake_cond = np.ones((FLAGS.batch_size, 1))
+    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
+    plt.scatter(samples[...,0], samples[...,1], s=1, c='b')
+    plt.savefig('results/fig/density_fit.pdf')
+
+  elif FLAGS.dim == 2 and FLAGS.case == 'wasserstein':
     # this plot the distribution at t=0,1 after training
     # as well as the error of the learned mapping at t=0, 1
     # based on grid evaluation
@@ -384,7 +409,7 @@ def main(_):
       rng=rng)
     plot_traj_and_velocity(quiver_size=0.01)
     plt.clf()
-    plt.plot(jnp.linspace(5001,20000,15000), jnp.array(loss_hist[5000:]))
+    plt.plot(jnp.linspace(5001,FLAGS.epochs,FLAGS.epochs-5000), jnp.array(loss_hist[5000:]))
     plt.savefig('results/fig/loss_hist.pdf')
 
     param_count = sum(x.size for x in jax.tree.leaves(params))

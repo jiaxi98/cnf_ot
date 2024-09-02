@@ -87,7 +87,7 @@ def plot_traj_and_velocity(
     rng: PRNGKey,
     quiver_size: float=.1):
 
-    t_array = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+    t_array = [0.1, 0.2, 0.4, 0.6, 0.8, 0.9]
     batch_size_pdf = 1024
     batch_size_velocity = 64
     fig1 = plt.figure(figsize=(10, 10))
