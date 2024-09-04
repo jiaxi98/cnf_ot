@@ -50,7 +50,7 @@ def make_conditioner(
     x = hk.nets.MLP(
       hidden_sizes,
       activate_final=True,
-      # activation=jax.nn.tanh,
+      activation=jax.nn.tanh,
       name=f"mlp_{name}"
     )(x)
     # We initialize this linear layer to zero so that the flow is initialized

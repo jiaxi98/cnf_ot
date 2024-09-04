@@ -225,7 +225,7 @@ def main(_):
       return jnp.mean(velocity**2) * FLAGS.dim / 2
   
   @partial(jax.jit, static_argnames=['batch_size'])
-  def density_fit_loss_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
+  def density_fit_loss_fn(params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int) -> Array:
 
     return kl_loss_fn(params, rng, 0, batch_size) + kl_loss_fn(params, rng, 1, batch_size)
 
