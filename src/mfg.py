@@ -261,7 +261,7 @@ def main(_):
       #weight = .01
       return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0] - velocity_[jnp.arange(batch_size),:,jnp.arange(batch_size),0]) * FLAGS.dim / 2
     
-    loss = lambda_ * density_fit_loss_fn(params, rng, batch_size)
+    loss = lambda_ * density_fit_loss_fn(params, rng, lambda_, batch_size)
     t_batch_size = 20 # 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     #t_batch = jnp.linspace(0.05, 0.95, t_batch_size)
