@@ -22,11 +22,11 @@ flags.DEFINE_integer(
   "flow_num_layers", 2, "Number of layers to use in the flow."
 )
 flags.DEFINE_integer(
-  "mlp_num_layers", 1, "Number of layers to use in the MLP conditioner."
+  "mlp_num_layers", 2, "Number of layers to use in the MLP conditioner."
 ) # 2
 flags.DEFINE_integer("hidden_size", 16, "Hidden size of the MLP conditioner.") # 64
 flags.DEFINE_integer(
-  "num_bins", 10, "Number of bins to use in the rational-quadratic spline."
+  "num_bins", 20, "Number of bins to use in the rational-quadratic spline."
 )  # 20
 flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
 flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
@@ -36,7 +36,7 @@ flags.DEFINE_integer("eval_frequency", 100, "How often to evaluate the model.")
 flags.DEFINE_integer("seed", 42, "random seed.")
 
 flags.DEFINE_enum(
-  "case", "wasserstein", ["density fit", "wasserstein", "mfg"],
+  "case", "density fit", ["density fit", "wasserstein", "mfg"],
   "problem type"
 )
 
@@ -74,11 +74,12 @@ def gaussian_mixture_2d(
     r: jnp.ndarray,
 ) -> jnp.ndarray:
 
-    R = 10
-    rho1 = partial(gaussian_2d, mean=jnp.array([0,R]), var=jnp.eye(2))
-    rho2 = partial(gaussian_2d, mean=jnp.array([R,0]), var=jnp.eye(2))
-    rho3 = partial(gaussian_2d, mean=jnp.array([0,-R]), var=jnp.eye(2))
-    rho4 = partial(gaussian_2d, mean=jnp.array([-R,0]), var=jnp.eye(2))
+    R = 5
+    var = 1
+    rho1 = partial(gaussian_2d, mean=jnp.array([0,R]), var=jnp.eye(2)*var)
+    rho2 = partial(gaussian_2d, mean=jnp.array([R,0]), var=jnp.eye(2)*var)
+    rho3 = partial(gaussian_2d, mean=jnp.array([0,-R]), var=jnp.eye(2)*var)
+    rho4 = partial(gaussian_2d, mean=jnp.array([-R,0]), var=jnp.eye(2)*var)
     return (rho1(r) + rho2(r) + rho3(r) + rho4(r))/4
 
 def potential_fn(
@@ -140,11 +141,11 @@ def main(_):
     mu1 = jnp.array([-5,-5])
     mu2 = jnp.array([5,5])
     # # linear transport calculation case
-    source_prob = jax.vmap(partial(gaussian_2d, mean=mu1, var=jnp.eye(2)*var1))
-    target_prob = jax.vmap(partial(gaussian_2d, mean=mu2, var=jnp.eye(2)*var2))
+    # source_prob = jax.vmap(partial(gaussian_2d, mean=mu1, var=jnp.eye(2)*var1))
+    # target_prob = jax.vmap(partial(gaussian_2d, mean=mu2, var=jnp.eye(2)*var2))
     # multi-to-one case
-    # source_prob = jax.vmap(gaussian_mixture_2d)
-    # target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([0,0]), var=jnp.eye(2)*var2))
+    source_prob = jax.vmap(gaussian_mixture_2d)
+    target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([0,0]), var=jnp.eye(2)*var2))
 
   # definition of loss functions
   @partial(jax.jit, static_argnames=['batch_size'])
@@ -197,32 +198,32 @@ def main(_):
     )
     return potential_fn(samples).mean()
   
-  # kinetic energy based on auto-differentiation
-  @partial(jax.jit, static_argnames=['batch_size'])
-  def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
-      """Kinetic energy along the trajectory at time t
-      """
-      fake_cond_ = np.ones((batch_size, 1)) * t
-      samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
-      xi = inverse_fn(params, samples, fake_cond_)
-      velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
-      # velocity.shape = [batch_size, 2, batch_size, 1]
-      # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
-      return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2) * FLAGS.dim / 2
-  
-  # # kinetic energy based on finite difference
+  # # kinetic energy based on auto-differentiation
   # @partial(jax.jit, static_argnames=['batch_size'])
   # def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
   #     """Kinetic energy along the trajectory at time t
   #     """
-  #     dt = 0.01
-  #     fake_cond_ = np.ones((batch_size, 1)) * (t-dt/2)
-  #     samples1 = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
-  #     fake_cond_ = np.ones((batch_size, 1)) * (t+dt/2)
-  #     samples2 = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
-  #     velocity = (samples2 - samples1)/dt
-  #     # velocity.shape = [batch_size, 2]
-  #     return jnp.mean(velocity**2) * FLAGS.dim / 2
+  #     fake_cond_ = np.ones((batch_size, 1)) * t
+  #     samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+  #     xi = inverse_fn(params, samples, fake_cond_)
+  #     velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
+  #     # velocity.shape = [batch_size, 2, batch_size, 1]
+  #     # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
+  #     return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2) * FLAGS.dim / 2
+  
+  # kinetic energy based on finite difference
+  @partial(jax.jit, static_argnames=['batch_size'])
+  def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
+      """Kinetic energy along the trajectory at time t
+      """
+      dt = 0.01
+      fake_cond_ = np.ones((batch_size, 1)) * (t-dt/2)
+      samples1 = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+      fake_cond_ = np.ones((batch_size, 1)) * (t+dt/2)
+      samples2 = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+      velocity = (samples2 - samples1)/dt
+      # velocity.shape = [batch_size, 2]
+      return jnp.mean(velocity**2) * FLAGS.dim / 2
   
   @partial(jax.jit, static_argnames=['batch_size'])
   def density_fit_loss_fn(params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int) -> Array:
@@ -263,8 +264,8 @@ def main(_):
     
     loss = lambda_ * density_fit_loss_fn(params, rng, lambda_, batch_size)
     t_batch_size = 10 # 10
-    #t_batch = jax.random.uniform(rng, (t_batch_size, ))
-    t_batch = jnp.linspace(0.05, 0.95, t_batch_size)
+    t_batch = jax.random.uniform(rng, (t_batch_size, ))
+    #t_batch = jnp.linspace(0.05, 0.95, t_batch_size)
     for _ in range(t_batch_size):
       loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size #+ acc_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
 
@@ -289,7 +290,7 @@ def main(_):
   def update(params: hk.Params, rng: PRNGKey, lambda_,
              opt_state: OptState) -> Tuple[Array, hk.Params, OptState]:
     """Single SGD update step."""
-    loss, grads = jax.value_and_grad(wasserstein_loss_fn)(params, rng, lambda_, FLAGS.batch_size)
+    loss, grads = jax.value_and_grad(density_fit_loss_fn)(params, rng, lambda_, FLAGS.batch_size)
     updates, new_opt_state = optimizer.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return loss, new_params, new_opt_state
@@ -318,7 +319,7 @@ def main(_):
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, lambda_, opt_state)
-    lambda_ += density_fit_loss_fn(params, rng, lambda_, FLAGS.batch_size)
+    #lambda_ += density_fit_loss_fn(params, rng, lambda_, FLAGS.batch_size)
     loss_hist.append(loss)
 
     if step % FLAGS.eval_frequency == 0:
@@ -374,6 +375,7 @@ def main(_):
 
   elif FLAGS.dim == 2 and FLAGS.case == 'density fit':
     plt.clf()
+    plt.figure(figsize=(6,6))
     fake_cond = np.zeros((FLAGS.batch_size, 1))
     samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
     plt.scatter(samples[...,0], samples[...,1], s=3, c='r')
@@ -381,6 +383,20 @@ def main(_):
     samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
     plt.scatter(samples[...,0], samples[...,1], s=1, c='b')
     plt.savefig('results/fig/density_fit.pdf')
+    plt.clf()
+
+    utils.plot_distribution_trajectory(
+        sample_fn,
+        forward_fn,
+        params, 
+        key,
+        FLAGS.batch_size,
+        mu1,
+        mu2,
+        var1,
+        var2,
+        fig_name=FLAGS.case+'_dist_traj'
+    )
 
   elif FLAGS.dim == 2 and FLAGS.case == 'wasserstein':
     # this plot the distribution at t=0,1 after training

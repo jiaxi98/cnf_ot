@@ -23,13 +23,14 @@ def make_conditioner(
   hidden_sizes: Sequence[int],
   num_bijector_params: int,
   periodized: bool = False,
-  init_to_identity: bool = True,
+  init_flow_to_identity: bool = True,
+  num_fourier_feat: int = 1,
 ) -> hk.Sequential:
   """Creates an MLP conditioner for each layer of the flow."""
 
   def conditioner(x: Optional[Array] = None, name: str = ""):
     if x is None or x.shape[-1] == 0:
-      init = jnp.zeros if init_to_identity else hk.initializers.RandomNormal(
+      init = jnp.zeros if init_flow_to_identity else hk.initializers.RandomNormal(
         stddev=1. / math.sqrt(num_bijector_params)
       )
       return hk.get_parameter(
@@ -40,14 +41,24 @@ def make_conditioner(
 
     x = hk.Flatten(preserve_dims=-len(event_shape))(x)
     if periodized:
-      x = jnp.concatenate([jnp.sin(x), jnp.cos(x)], axis=-1)
-    x = hk.nets.MLP(hidden_sizes, activate_final=True, name=f"mlp_{name}")(x)
+      # x = jnp.concatenate([jnp.sin(x), jnp.cos(x)], axis=-1)
+      x = jnp.concatenate(
+        [jnp.sin(2**i * x) for i in range(num_fourier_feat)] +
+        [jnp.cos(2**i * x) for i in range(num_fourier_feat)],
+        axis=-1
+      )
+    x = hk.nets.MLP(
+      hidden_sizes,
+      activate_final=True,
+      activation=jax.nn.tanh,
+      name=f"mlp_{name}"
+    )(x)
     # We initialize this linear layer to zero so that the flow is initialized
     # to the identity function.
     out_kwargs = dict(
       w_init=jnp.zeros,
       b_init=jnp.zeros,
-    ) if init_to_identity else dict()
+    ) if init_flow_to_identity else dict()
     x = hk.Linear(
       np.prod(event_shape) * num_bijector_params,
       name=f"linear_out_{name}",
@@ -68,7 +79,10 @@ def make_flow_model(
   hidden_sizes: Sequence[int],
   num_bins: int,
   periodized: bool = False,
-  init_to_identity: bool = True,
+  B: Optional[Float[Array, "d d"]] = None,
+  init_flow_to_identity: bool = True,
+  cond_shape: Sequence[int] = (1, ),
+  base_range=(-np.pi, np.pi),
 ) -> distrax.Transformed:
   """Creates a flow model supported on [0,1].
 
@@ -79,12 +93,18 @@ def make_flow_model(
   For RQS, this is achieved by setting the first and the last slope the same,
   since it is already monotonic.
 
+  Number of parameters for the RQS:
+  - `num_bins` bin widths
+  - `num_bins` bin heights
+  - `num_bins + 1` knot slopes
+  for a total of `3 * num_bins + 1` parameters.
+
   Args:
+    B: matrix with reciprocal lattice constants as rows
   """
   event_dim = np.prod(event_shape)
 
   def bijector_fn(params: Array):
-
     return distrax.RationalQuadraticSpline(
       params,
       range_min=0. if periodized else -10.,
@@ -94,16 +114,12 @@ def make_flow_model(
       boundary_slopes='circular' if periodized else 'unconstrained'
     )
 
-  # Number of parameters for the rational-quadratic spline:
-  # - `num_bins` bin widths
-  # - `num_bins` bin heights
-  # - `num_bins + 1` knot slopes
-  # for a total of `3 * num_bins + 1` parameters.
   num_bijector_params = 3 * num_bins + 1
 
   layers = []
 
   if True:  # autoregressive
+    # assert periodized
     # the conditioner has event shape of 1 since autoregressive
     # decomposition is used
     perms = itertools.cycle(itertools.permutations(range(event_dim)))
@@ -111,57 +127,19 @@ def make_flow_model(
       layer = Autoregressive(
         bijector=bijector_fn,
         conditioner=make_conditioner(
-          (1, ), hidden_sizes, num_bijector_params, periodized, init_to_identity
+          (1, ), hidden_sizes, num_bijector_params, periodized,
+          init_flow_to_identity
         ),
         event_shape=event_shape,
-        cond_shape=(1, ),  # TODO: remove hardcoding here
+        cond_shape=cond_shape,
         permutation=next(perms),
+        name=f"layer{l}"
       )
       layers.append(layer)
 
-  else:
-    if periodized:
-      first_layer_params = hk.get_parameter(
-        "first",
-        shape=(np.prod(event_shape), num_bijector_params),
-        init=hk.initializers.RandomNormal(
-          stddev=1. / math.sqrt(num_bijector_params)
-        ),
-      )
-      layers.append(distrax.Block(bijector_fn(first_layer_params), 1))
-
-    if periodized:
-      # override num_layers
-      # TODO: why when > 1 it converges to uniform?
-      # num_layers = event_dim - 1
-      mask = jnp.zeros(event_dim).astype(bool)
-      # mask = mask.at[0].set(True)
-    else:
-      # Alternating binary mask.
-      mask = jnp.arange(0, event_dim) % 2
-      mask = jnp.reshape(mask, event_shape)
-      mask = mask.astype(bool)
-
-    mask = jnp.arange(0, event_dim) % 2
-    mask = jnp.reshape(mask, event_shape)
-    mask = mask.astype(bool)
-
-    # use x to condition y and z
-    for l in range(num_layers):
-      if periodized:
-        mask = jnp.eye(event_dim)[l % event_dim].astype(bool)
-      layer = distrax.MaskedCoupling(
-        mask=mask,
-        bijector=bijector_fn,
-        conditioner=make_conditioner(
-          event_shape, hidden_sizes, num_bijector_params, periodized
-        )
-      )
-      layers.append(layer)
-
-      if not periodized:
-        # Flip the mask after each layer.
-        mask = jnp.logical_not(mask)
+  if B is not None:
+    layer = distrax.UnconstrainedAffine(matrix=B.T, bias=np.zeros(B.shape[0]))
+    layers.append(layer)
 
   # We invert the flow so that the `forward` method is called with `log_prob`.
   flow = ConditionalInverse(ConditionalChain(layers))
@@ -186,6 +164,7 @@ def RQSFlow(
   hidden_sizes: Sequence[int],
   num_bins: int,
   periodized: bool = False,
+  base_range=(0, 2 * np.pi),
 ):
 
   def model() -> Array:
@@ -195,6 +174,7 @@ def RQSFlow(
       hidden_sizes=hidden_sizes,
       num_bins=num_bins,
       periodized=periodized,
+      base_range=base_range,
     )
 
     # NOTE: in the context of DPW, x is the parameter space, also written as xi
