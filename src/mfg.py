@@ -22,7 +22,7 @@ flags.DEFINE_integer(
   "flow_num_layers", 2, "Number of layers to use in the flow."
 )
 flags.DEFINE_integer(
-  "mlp_num_layers", 2, "Number of layers to use in the MLP conditioner."
+  "mlp_num_layers", 1, "Number of layers to use in the MLP conditioner."
 ) # 2
 flags.DEFINE_integer("hidden_size", 16, "Hidden size of the MLP conditioner.") # 64
 flags.DEFINE_integer(
