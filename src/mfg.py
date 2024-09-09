@@ -26,7 +26,7 @@ flags.DEFINE_integer(
 ) # 2
 flags.DEFINE_integer("hidden_size", 16, "Hidden size of the MLP conditioner.") # 64
 flags.DEFINE_integer(
-  "num_bins", 10, "Number of bins to use in the rational-quadratic spline."
+  "num_bins", 20, "Number of bins to use in the rational-quadratic spline."
 )  # 20
 flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
 flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
@@ -80,6 +80,32 @@ def gaussian_mixture_2d(
     rho3 = partial(gaussian_2d, mean=jnp.array([0,-R]), var=jnp.eye(2))
     rho4 = partial(gaussian_2d, mean=jnp.array([-R,0]), var=jnp.eye(2))
     return (rho1(r) + rho2(r) + rho3(r) + rho4(r))/4
+
+def sample_source_fn(
+  seed: PRNGKey, 
+  sample_shape,
+):
+  
+  dim = 2
+  R = 5
+  component_indices = jax.random.choice(seed, a=4, shape=(sample_shape, ), p=jnp.ones(4)/4)
+  sample_ = jnp.zeros((4, sample_shape, dim))
+  sample_ = sample_.at[0].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,R]))
+  sample_ = sample_.at[1].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R,0]))
+  sample_ = sample_.at[2].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,-R]))
+  sample_ = sample_.at[3].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R,0]))
+
+  sample = sample_[component_indices[jnp.arange(sample_shape)], jnp.arange(sample_shape)]
+  return sample
+
+def sample_target_fn(
+  seed: PRNGKey,
+  sample_shape,
+):
+  
+  dim = 2
+  return jax.random.normal(seed, shape=(sample_shape, dim))
+
 
 def potential_fn(
     r: jnp.ndarray,
@@ -167,6 +193,23 @@ def main(_):
     return (log_prob - jnp.log(source_prob(samples)*(1-cond) + target_prob(samples)*cond)).mean()
 
   @partial(jax.jit, static_argnames=['batch_size'])
+  def reverse_kl_loss_fn(params: hk.Params, rng: PRNGKey, cond, batch_size: int) -> Array:
+    """reverse KL-divergence between the normalizing flow and the reference distribution.
+    
+    """
+    
+    samples1 = sample_source_fn(seed=rng, sample_shape=batch_size)
+    samples2 = sample_target_fn(seed=rng, sample_shape=batch_size)
+    samples = samples1 * (1-cond) + samples2 * cond
+    fake_cond_ = np.ones((batch_size, 1)) * cond
+    log_prob = model.apply.log_prob(
+        params,
+        samples,
+        cond=fake_cond_
+    )
+    return -log_prob.mean()
+
+  @partial(jax.jit, static_argnames=['batch_size'])
   def mse_loss_fn(params: hk.Params, rng: PRNGKey, cond, batch_size: int) -> Array:
     """KL-divergence between the normalizing flow and the reference distribution.
     
@@ -224,10 +267,17 @@ def main(_):
   #     # velocity.shape = [batch_size, 2]
   #     return jnp.mean(velocity**2) * FLAGS.dim / 2
   
+  # # density fitting using the KL divergence, the exact form of the distribution is available
+  # @partial(jax.jit, static_argnames=['batch_size'])
+  # def density_fit_loss_fn(params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int) -> Array:
+
+  #   return kl_loss_fn(params, rng, 0, batch_size) + kl_loss_fn(params, rng, 1, batch_size)
+  
+  # density fitting using the reverse KL divergence, the samples from the target distribution is available
   @partial(jax.jit, static_argnames=['batch_size'])
   def density_fit_loss_fn(params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int) -> Array:
 
-    return kl_loss_fn(params, rng, 0, batch_size) + kl_loss_fn(params, rng, 1, batch_size)
+    return reverse_kl_loss_fn(params, rng, 0, batch_size) + reverse_kl_loss_fn(params, rng, 1, batch_size)
 
   @partial(jax.jit, static_argnames=['batch_size'])
   def wasserstein_loss_fn(params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int) -> Array:
