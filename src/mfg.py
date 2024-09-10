@@ -24,9 +24,9 @@ flags.DEFINE_integer(
 flags.DEFINE_integer(
   "mlp_num_layers", 1, "Number of layers to use in the MLP conditioner."
 ) # 2
-flags.DEFINE_integer("hidden_size", 16, "Hidden size of the MLP conditioner.") # 64
+flags.DEFINE_integer("hidden_size", 64, "Hidden size of the MLP conditioner.") # 64
 flags.DEFINE_integer(
-  "num_bins", 20, "Number of bins to use in the rational-quadratic spline."
+  "num_bins", 40, "Number of bins to use in the rational-quadratic spline."
 )  # 20
 flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
 flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
@@ -240,32 +240,32 @@ def main(_):
     )
     return potential_fn(samples).mean()
   
-  # kinetic energy based on auto-differentiation
-  @partial(jax.jit, static_argnames=['batch_size'])
-  def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
-      """Kinetic energy along the trajectory at time t
-      """
-      fake_cond_ = np.ones((batch_size, 1)) * t
-      samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
-      xi = inverse_fn(params, samples, fake_cond_)
-      velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
-      # velocity.shape = [batch_size, 2, batch_size, 1]
-      # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
-      return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2) * FLAGS.dim / 2
-  
-  # # kinetic energy based on finite difference
+  # # kinetic energy based on auto-differentiation
   # @partial(jax.jit, static_argnames=['batch_size'])
   # def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
   #     """Kinetic energy along the trajectory at time t
   #     """
-  #     dt = 0.01
-  #     fake_cond_ = np.ones((batch_size, 1)) * (t-dt/2)
-  #     samples1 = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
-  #     fake_cond_ = np.ones((batch_size, 1)) * (t+dt/2)
-  #     samples2 = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
-  #     velocity = (samples2 - samples1)/dt
-  #     # velocity.shape = [batch_size, 2]
-  #     return jnp.mean(velocity**2) * FLAGS.dim / 2
+  #     fake_cond_ = np.ones((batch_size, 1)) * t
+  #     samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+  #     xi = inverse_fn(params, samples, fake_cond_)
+  #     velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
+  #     # velocity.shape = [batch_size, 2, batch_size, 1]
+  #     # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
+  #     return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2) * FLAGS.dim / 2
+  
+  # kinetic energy based on finite difference
+  @partial(jax.jit, static_argnames=['batch_size'])
+  def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
+      """Kinetic energy along the trajectory at time t
+      """
+      dt = 0.01
+      fake_cond_ = np.ones((batch_size, 1)) * (t-dt/2)
+      samples1 = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+      fake_cond_ = np.ones((batch_size, 1)) * (t+dt/2)
+      samples2 = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+      velocity = (samples2 - samples1)/dt
+      # velocity.shape = [batch_size, 2]
+      return jnp.mean(velocity**2) * FLAGS.dim / 2
   
   # # density fitting using the KL divergence, the exact form of the distribution is available
   # @partial(jax.jit, static_argnames=['batch_size'])
@@ -313,8 +313,8 @@ def main(_):
     
     loss = lambda_ * density_fit_loss_fn(params, rng, lambda_, batch_size)
     t_batch_size = 10 # 10
-    #t_batch = jax.random.uniform(rng, (t_batch_size, ))
-    t_batch = jnp.linspace(0.05, 0.95, t_batch_size)
+    t_batch = jax.random.uniform(rng, (t_batch_size, ))
+    #t_batch = jnp.linspace(0.05, 0.95, t_batch_size)
     for _ in range(t_batch_size):
       loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size #+ acc_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
 
@@ -364,11 +364,11 @@ def main(_):
   # training loop
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
-  lambda_ = 1e2
+  lambda_ = 10
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, lambda_, opt_state)
-    lambda_ += density_fit_loss_fn(params, rng, lambda_, FLAGS.batch_size)
+    #lambda_ += density_fit_loss_fn(params, rng, lambda_, FLAGS.batch_size)
     loss_hist.append(loss)
 
     if step % FLAGS.eval_frequency == 0:

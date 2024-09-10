@@ -6,6 +6,7 @@ import haiku as hk
 import jax
 import jax.numpy as jnp
 import distrax
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
@@ -89,7 +90,6 @@ def sample_source_fn(
   
   dim = 2
   R = 5
-  breakpoint()
   component_indices = jax.random.choice(seed, a=4, shape=(sample_shape, ), p=jnp.ones(4)/4)
   sample_ = jnp.zeros((4, sample_shape, dim))
   sample_ = sample_.at[0].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,R]))
@@ -199,7 +199,6 @@ def main(_):
     
     """
     
-    breakpoint()
     samples1 = sample_source_fn(seed=rng, sample_shape=batch_size)
     samples2 = sample_target_fn(seed=rng, sample_shape=batch_size)
     samples = samples1 * (1-cond) + samples2 * cond
@@ -425,29 +424,36 @@ def main(_):
     plot_1d_map
 
   elif FLAGS.dim == 2 and FLAGS.case == 'density fit':
+    
     plt.clf()
-    plt.figure(figsize=(6,6))
-    fake_cond = np.zeros((FLAGS.batch_size, 1))
-    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.scatter(samples[...,0], samples[...,1], s=3, c='r')
-    fake_cond = np.ones((FLAGS.batch_size, 1))
-    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.scatter(samples[...,0], samples[...,1], s=1, c='b')
+    plt.figure(figsize=(10,2))
+    t_array = jnp.linspace(0, 1, 5)
+    cmap = plt.cm.Reds
+    norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
+
+    for i in range(5):
+      plt.subplot(1,5,i+1)
+      fake_cond = np.ones((FLAGS.batch_size, 1)) * t_array[i]
+      samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
+      plt.scatter(samples[...,0], samples[...,1], s=1, label=str(t_array[i]), color=cmap(norm(t_array[i])))
+      plt.legend()
+
     plt.savefig('results/fig/density_fit.pdf')
     plt.clf()
 
-    utils.plot_distribution_trajectory(
-        sample_fn,
-        forward_fn,
-        params, 
-        key,
-        FLAGS.batch_size,
-        mu1,
-        mu2,
-        var1,
-        var2,
-        fig_name=FLAGS.case+'_dist_traj'
-    )
+    # this plot routine is only for density fitting bewteen Gaussian distribution
+    # utils.plot_distribution_trajectory(
+    #     sample_fn,
+    #     forward_fn,
+    #     params, 
+    #     key,
+    #     FLAGS.batch_size,
+    #     mu1,
+    #     mu2,
+    #     var1,
+    #     var2,
+    #     fig_name=FLAGS.case+'_dist_traj'
+    # )
 
   elif FLAGS.dim == 2 and FLAGS.case == 'wasserstein':
     # this plot the distribution at t=0,1 after training
