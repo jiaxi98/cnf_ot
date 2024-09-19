@@ -24,9 +24,9 @@ flags.DEFINE_integer(
 flags.DEFINE_integer(
   "mlp_num_layers", 1, "Number of layers to use in the MLP conditioner."
 ) # 2
-flags.DEFINE_integer("hidden_size", 64, "Hidden size of the MLP conditioner.") # 64
+flags.DEFINE_integer("hidden_size", 32, "Hidden size of the MLP conditioner.") # 64
 flags.DEFINE_integer(
-  "num_bins", 40, "Number of bins to use in the rational-quadratic spline."
+  "num_bins", 20, "Number of bins to use in the rational-quadratic spline."
 )  # 20
 flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
 flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
@@ -88,12 +88,12 @@ def sample_source_fn(
   
   dim = 2
   R = 5
-  component_indices = jax.random.choice(seed, a=4, shape=(sample_shape, ), p=jnp.ones(4)/4)
-  sample_ = jnp.zeros((4, sample_shape, dim))
+  component_indices = jax.random.choice(seed, a=2, shape=(sample_shape, ), p=jnp.ones(2)/2)
+  sample_ = jnp.zeros((2, sample_shape, dim))
   sample_ = sample_.at[0].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,R]))
   sample_ = sample_.at[1].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R,0]))
-  sample_ = sample_.at[2].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,-R]))
-  sample_ = sample_.at[3].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R,0]))
+  #sample_ = sample_.at[2].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,-R]))
+  #sample_ = sample_.at[3].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R,0]))
 
   sample = sample_[component_indices[jnp.arange(sample_shape)], jnp.arange(sample_shape)]
   return sample
@@ -312,7 +312,7 @@ def main(_):
       return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0] - velocity_[jnp.arange(batch_size),:,jnp.arange(batch_size),0]) * FLAGS.dim / 2
     
     loss = lambda_ * density_fit_loss_fn(params, rng, lambda_, batch_size)
-    t_batch_size = 10 # 10
+    t_batch_size = 20 # 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     #t_batch = jnp.linspace(0.05, 0.95, t_batch_size)
     for _ in range(t_batch_size):
@@ -364,7 +364,7 @@ def main(_):
   # training loop
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
-  lambda_ = 10
+  lambda_ = 100
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, lambda_, opt_state)
