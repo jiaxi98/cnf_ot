@@ -104,10 +104,13 @@ def prob_fn3_(
     r: jnp.ndarray,
 ) -> jnp.ndarray:
 
-    R = 3
-    rho1 = partial(gaussian_2d, mean=jnp.array([0,R]), var=jnp.eye(2))
-    rho2 = partial(gaussian_2d, mean=jnp.array([R,0]), var=jnp.eye(2))
-    return (rho1(r) + rho2(r))/2
+    R = 2.5
+    var = 1
+    rho1 = partial(gaussian_2d, mean=jnp.array([0,R]), var=jnp.eye(2)*var)
+    rho2 = partial(gaussian_2d, mean=jnp.array([R,0]), var=jnp.eye(2)*var)
+    rho3 = partial(gaussian_2d, mean=jnp.array([0,-R]), var=jnp.eye(2)*var)
+    rho4 = partial(gaussian_2d, mean=jnp.array([-R,0]), var=jnp.eye(2)*var)
+    return (rho1(r) + rho2(r) + rho3(r) + rho4(r))/4
 
 def sample_fn3(
   seed: PRNGKey,
@@ -115,11 +118,13 @@ def sample_fn3(
 ):
   
   dim = 2
-  R = 3
-  component_indices = jax.random.choice(seed, a=2, shape=(sample_shape, ), p=jnp.ones(2)/2)
-  sample_ = jnp.zeros((2, sample_shape, dim))
+  R = 2.5
+  component_indices = jax.random.choice(seed, a=4, shape=(sample_shape, ), p=jnp.ones(4)/4)
+  sample_ = jnp.zeros((4, sample_shape, dim))
   sample_ = sample_.at[0].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,R]))
   sample_ = sample_.at[1].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R,0]))
+  sample_ = sample_.at[2].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,-R]))
+  sample_ = sample_.at[3].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R,0]))
 
   sample = sample_[component_indices[jnp.arange(sample_shape)], jnp.arange(sample_shape)]
   return sample
@@ -276,11 +281,11 @@ def main(_):
   @partial(jax.jit, static_argnames=['batch_size'])
   def density_fit_loss_fn(params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int) -> Array:
 
-    return reverse_kl_loss_fn(params, rng, 0, batch_size) \
-      + reverse_kl_loss_fn(params, rng, 1, batch_size)
     # return reverse_kl_loss_fn(params, rng, 0, batch_size) \
-    #   + reverse_kl_loss_fn(params, rng, 1, batch_size) \
-    #   + reverse_kl_loss_fn(params, rng, .5, batch_size)
+    #   + reverse_kl_loss_fn(params, rng, 1, batch_size)
+    return reverse_kl_loss_fn(params, rng, 0, batch_size) \
+      + reverse_kl_loss_fn(params, rng, 1, batch_size) \
+      + reverse_kl_loss_fn(params, rng, .5, batch_size)
 
   @partial(jax.jit, static_argnames=['batch_size'])
   def wasserstein_loss_fn(params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int) -> Array:
@@ -368,6 +373,7 @@ def main(_):
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
   lambda_ = 1e2
+  print_ = 'rKL'
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, lambda_, opt_state)
@@ -380,11 +386,16 @@ def main(_):
       key, rng = jax.random.split(rng)
       # density fit
       if FLAGS.case == 'density fit':
-        KL0 = reverse_kl_loss_fn(params, rng, 0, FLAGS.batch_size)
+        if print_ == 'rKL':
+          KL0 = reverse_kl_loss_fn(params, rng, 0, FLAGS.batch_size)
+          KL1 = reverse_kl_loss_fn(params, rng, 1, FLAGS.batch_size)
+          KL2 = reverse_kl_loss_fn(params, rng, 0.5, FLAGS.batch_size)
+        elif print_ == 'KL':
+          KL0 = kl_loss_fn(params, rng, 0, FLAGS.batch_size)
+          KL1 = kl_loss_fn(params, rng, 1, FLAGS.batch_size)
+          KL2 = kl_loss_fn(params, rng, 0.5, FLAGS.batch_size)
         desc_str += f" | {KL0=:.4e} "
-        KL1 = reverse_kl_loss_fn(params, rng, 1, FLAGS.batch_size)
         desc_str += f" | {KL1=:.4e} "
-        KL2 = reverse_kl_loss_fn(params, rng, .5, FLAGS.batch_size)
         desc_str += f" | {KL2=:.4e} "
         MSE0 = mse_loss_fn(params, rng, 0, FLAGS.batch_size)
         desc_str += f" | {MSE0=:.4e} "
