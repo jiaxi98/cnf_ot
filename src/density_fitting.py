@@ -16,6 +16,7 @@ from jaxtyping import Array
 from tqdm import tqdm
 
 from src.flows import RQSFlow
+from src.flows import make_flow_model
 from src.types import Batch, OptState, PRNGKey
 import src.utils as utils
 
@@ -210,14 +211,25 @@ def main(_):
   rng = jax.random.PRNGKey(FLAGS.seed)
   optimizer = optax.adam(FLAGS.lr)
 
-  model = RQSFlow(
-    event_shape=(FLAGS.dim, ),
-    num_layers=FLAGS.flow_num_layers,
-    hidden_sizes=[FLAGS.hidden_size] * FLAGS.mlp_num_layers,
-    num_bins=FLAGS.num_bins,
-    periodized=False,
-  )
-  model = hk.without_apply_rng(hk.multi_transform(model))
+  model = make_flow_model(
+      event_shape=(FLAGS.dim, ),
+      num_layers=FLAGS.flow_num_layers,
+      hidden_sizes=[FLAGS.hidden_size] * FLAGS.mlp_num_layers,
+      num_bins=FLAGS.num_bins,
+      periodized=False,
+      init_flow_to_identity=True,
+      cond_shape=(1,),
+      minimum_perm=True,
+    )
+  # model = RQSFlow(
+  #   event_shape=(FLAGS.dim, ),
+  #   num_layers=FLAGS.flow_num_layers,
+  #   hidden_sizes=[FLAGS.hidden_size] * FLAGS.mlp_num_layers,
+  #   num_bins=FLAGS.num_bins,
+  #   periodized=False,
+  # )
+  breakpoint()
+  #model = hk.without_apply_rng(hk.multi_transform(model))
   forward_fn = jax.jit(model.apply.forward)
   inverse_fn = jax.jit(model.apply.inverse)
   sample_fn = jax.jit(model.apply.sample, static_argnames=['sample_shape'])

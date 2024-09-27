@@ -1,3 +1,17 @@
+# Copyright 2024 Garena Online Private Limited
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from typing import Any, Callable, Optional, Sequence, Tuple
 
 import jax.numpy as jnp
@@ -38,7 +52,7 @@ class Autoregressive(ConditionalBijector):
     self._bijector = bijector
     self._event_shape = event_shape
     self._event_ndims = 1  # autoregressive
-    self.permutation = permutation or list(range(sum(event_shape)))
+    self.permutation = permutation if permutation is not None else list(range(sum(event_shape)))
     self.is_conditional = sum(cond_shape) > 0
     self._name = name
     super().__init__(event_ndims_in=self._event_ndims, cond_shape=cond_shape)
@@ -67,12 +81,17 @@ class Autoregressive(ConditionalBijector):
     for d in range(ndims):
       i = self.permutation[d]
       layer_name = f"{self._name}_d{d}"
-      if i == 0:
-        params_i = self._conditioner(
-          c if self.is_conditional else None, layer_name
-        )
+      if d == 0:
+        # params_i = self._conditioner(
+        #   c if self.is_conditional else None, layer_name
+        # )
+        params_i = self._conditioner(None, layer_name)
       else:
-        params_i = self._conditioner(x[..., self.permutation[:d]], layer_name)
+        cond_input = y[..., self.permutation[:d]]
+        if self.is_conditional:
+          c_ = jnp.broadcast_to(c, cond_input.shape[:-1] + c.shape)
+          cond_input = jnp.concatenate([c_, cond_input], axis=-1)
+        params_i = self._conditioner(cond_input, layer_name)
       x_i = x[..., i:i + 1]
       y_i, logdet_i = self._inner_bijector(params_i).forward_and_log_det(x_i)
       y = y.at[..., i:i + 1].set(y_i)
@@ -93,12 +112,14 @@ class Autoregressive(ConditionalBijector):
     for d in range(ndims):
       i = self.permutation[d]
       layer_name = f"{self._name}_d{d}"
-      if i == 0:
-        params_i = self._conditioner(
-          c if self.is_conditional else None, layer_name
-        )
+      if d == 0:
+        params_i = self._conditioner(None, layer_name)
       else:
-        params_i = self._conditioner(x[..., self.permutation[:d]], layer_name)
+        cond_input = y[..., self.permutation[:d]]
+        if self.is_conditional:
+          c_ = jnp.broadcast_to(c, cond_input.shape[:-1] + c.shape)
+          cond_input = jnp.concatenate([c_, cond_input], axis=-1)
+        params_i = self._conditioner(cond_input, layer_name)
       y_i = y[..., i:i + 1]
       x_i, logdet_i = self._inner_bijector(params_i).inverse_and_log_det(y_i)
       x = x.at[..., i:i + 1].set(x_i)

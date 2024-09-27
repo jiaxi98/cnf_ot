@@ -1,3 +1,17 @@
+# Copyright 2024 Garena Online Private Limited
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import itertools
 import math
 from collections import namedtuple
@@ -25,6 +39,7 @@ def make_conditioner(
   periodized: bool = False,
   init_flow_to_identity: bool = True,
   num_fourier_feat: int = 1,
+  tanh_act: bool = False,
 ) -> hk.Sequential:
   """Creates an MLP conditioner for each layer of the flow."""
 
@@ -50,7 +65,7 @@ def make_conditioner(
     x = hk.nets.MLP(
       hidden_sizes,
       activate_final=True,
-      activation=jax.nn.tanh,
+      activation=jax.nn.tanh if tanh_act else jax.nn.relu,
       name=f"mlp_{name}"
     )(x)
     # We initialize this linear layer to zero so that the flow is initialized
@@ -83,6 +98,8 @@ def make_flow_model(
   init_flow_to_identity: bool = True,
   cond_shape: Sequence[int] = (1, ),
   base_range=(-np.pi, np.pi),
+  tanh_act: bool = False,
+  minimum_perm: bool = False,
 ) -> distrax.Transformed:
   """Creates a flow model supported on [0,1].
 
@@ -119,16 +136,19 @@ def make_flow_model(
   layers = []
 
   if True:  # autoregressive
-    # assert periodized
     # the conditioner has event shape of 1 since autoregressive
     # decomposition is used
-    perms = itertools.cycle(itertools.permutations(range(event_dim)))
+    if minimum_perm:
+      p = np.arange(event_dim)
+      perms = itertools.cycle((p, p[::-1]))
+    else:
+      perms = itertools.cycle(itertools.permutations(range(event_dim)))
     for l in range(num_layers):  # stacking produce weird artefacts
       layer = Autoregressive(
         bijector=bijector_fn,
         conditioner=make_conditioner(
           (1, ), hidden_sizes, num_bijector_params, periodized,
-          init_flow_to_identity
+          init_flow_to_identity, 1, tanh_act
         ),
         event_shape=event_shape,
         cond_shape=cond_shape,
