@@ -26,15 +26,15 @@ flags.DEFINE_integer(
 flags.DEFINE_integer(
   "mlp_num_layers", 2, "Number of layers to use in the MLP conditioner."
 ) # 2
-flags.DEFINE_integer("hidden_size", 64, "Hidden size of the MLP conditioner.") # 64
+flags.DEFINE_integer("hidden_size", 16, "Hidden size of the MLP conditioner.") # 64
 flags.DEFINE_integer(
-  "num_bins", 40, "Number of bins to use in the rational-quadratic spline."
+  "num_bins", 5, "Number of bins to use in the rational-quadratic spline."
 )  # 20
 flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
 flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
 flags.DEFINE_float("lr", 1e-3, "Learning rate for the optimizer.")
 flags.DEFINE_integer("epochs", 30000, "Number of training steps to run.")
-flags.DEFINE_integer("eval_frequency", 100, "How often to evaluate the model.")
+flags.DEFINE_integer("eval_frequency", 1000, "How often to evaluate the model.")
 flags.DEFINE_integer("seed", 42, "random seed.")
 
 flags.DEFINE_enum(
@@ -211,31 +211,20 @@ def main(_):
   rng = jax.random.PRNGKey(FLAGS.seed)
   optimizer = optax.adam(FLAGS.lr)
 
-  model = make_flow_model(
-      event_shape=(FLAGS.dim, ),
-      num_layers=FLAGS.flow_num_layers,
-      hidden_sizes=[FLAGS.hidden_size] * FLAGS.mlp_num_layers,
-      num_bins=FLAGS.num_bins,
-      periodized=False,
-      init_flow_to_identity=True,
-      cond_shape=(1,),
-      minimum_perm=True,
-    )
-  # model = RQSFlow(
-  #   event_shape=(FLAGS.dim, ),
-  #   num_layers=FLAGS.flow_num_layers,
-  #   hidden_sizes=[FLAGS.hidden_size] * FLAGS.mlp_num_layers,
-  #   num_bins=FLAGS.num_bins,
-  #   periodized=False,
-  # )
-  breakpoint()
-  #model = hk.without_apply_rng(hk.multi_transform(model))
+  model = RQSFlow(
+    event_shape=(FLAGS.dim, ),
+    num_layers=FLAGS.flow_num_layers,
+    hidden_sizes=[FLAGS.hidden_size] * FLAGS.mlp_num_layers,
+    num_bins=FLAGS.num_bins,
+    periodized=False,
+  )
+  model = hk.without_apply_rng(hk.multi_transform(model))
   forward_fn = jax.jit(model.apply.forward)
   inverse_fn = jax.jit(model.apply.inverse)
   sample_fn = jax.jit(model.apply.sample, static_argnames=['sample_shape'])
   log_prob_fn = jax.jit(model.apply.log_prob)
   key, rng = jax.random.split(rng)
-  params = model.init(key, np.zeros((1, FLAGS.dim)), np.zeros((1, 1)))
+  params = model.init(key, np.zeros((1, FLAGS.dim)), np.zeros((1,)))
   print(params.keys())
 
   opt_state = optimizer.init(params)
@@ -263,7 +252,7 @@ def main(_):
     probability metric, e.g. MMD.
     """
     
-    fake_cond_ = np.ones((batch_size, 1)) * cond
+    fake_cond_ = np.ones((1, )) * cond
     samples, log_prob = model.apply.sample_and_log_prob(
         params,
         cond=fake_cond_,
@@ -293,7 +282,7 @@ def main(_):
       + samples3*cond*(1-cond)*(0.75-cond)*(cond-0.25)*64 \
       + samples4*cond*(1-cond)*(0.75-cond)*(0.5-cond)*128/3 \
       + samples5*cond*(1-cond)*(cond-0.25)*(cond-0.5)*128/3
-    fake_cond_ = np.ones((batch_size, 1)) * cond
+    fake_cond_ = np.ones((1, )) * cond
     log_prob = model.apply.log_prob(
         params,
         samples,
@@ -311,7 +300,7 @@ def main(_):
     probability metric, e.g. MMD.
     """
     
-    fake_cond_ = jnp.ones((batch_size, 1)) * cond
+    fake_cond_ = jnp.ones((1, )) * cond
     samples, log_prob = model.apply.sample_and_log_prob(
         params,
         cond=fake_cond_,
@@ -368,7 +357,7 @@ def main(_):
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
   lambda_ = 1e2
-  print_ = 'KL'
+  print_ = 'rKL'
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, lambda_, opt_state)
@@ -385,6 +374,8 @@ def main(_):
           KL0 = reverse_kl_loss_fn(params, rng, 0, FLAGS.batch_size)
           KL1 = reverse_kl_loss_fn(params, rng, 1, FLAGS.batch_size)
           KL2 = reverse_kl_loss_fn(params, rng, 0.5, FLAGS.batch_size)
+          KL3 = reverse_kl_loss_fn(params, rng, 0.75, FLAGS.batch_size)
+          KL4 = reverse_kl_loss_fn(params, rng, 0.25, FLAGS.batch_size)
         elif print_ == 'KL':
           KL0 = kl_loss_fn(params, rng, 0, FLAGS.batch_size)
           KL1 = kl_loss_fn(params, rng, 1, FLAGS.batch_size)

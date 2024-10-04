@@ -194,7 +194,9 @@ def RQSFlow(
       hidden_sizes=hidden_sizes,
       num_bins=num_bins,
       periodized=periodized,
+      init_flow_to_identity=True,
       base_range=base_range,
+      minimum_perm=True,
     )
 
     # NOTE: in the context of DPW, x is the parameter space, also written as xi
