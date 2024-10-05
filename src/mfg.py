@@ -6,6 +6,7 @@ import haiku as hk
 import jax
 import jax.numpy as jnp
 import distrax
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
@@ -22,11 +23,11 @@ flags.DEFINE_integer(
   "flow_num_layers", 2, "Number of layers to use in the flow."
 )
 flags.DEFINE_integer(
-  "mlp_num_layers", 1, "Number of layers to use in the MLP conditioner."
+  "mlp_num_layers", 2, "Number of layers to use in the MLP conditioner."
 ) # 2
-flags.DEFINE_integer("hidden_size", 32, "Hidden size of the MLP conditioner.") # 64
+flags.DEFINE_integer("hidden_size", 16, "Hidden size of the MLP conditioner.") # 64
 flags.DEFINE_integer(
-  "num_bins", 20, "Number of bins to use in the rational-quadratic spline."
+  "num_bins", 5, "Number of bins to use in the rational-quadratic spline."
 )  # 20
 flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
 flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
@@ -40,27 +41,12 @@ flags.DEFINE_enum(
   "problem type"
 )
 
-flags.DEFINE_boolean('use_64', True, 'whether to use float64')
-flags.DEFINE_boolean('plot', False, 'whether to plot resulting model density')
+flags.DEFINE_boolean("use_64", True, "whether to use float64")
+flags.DEFINE_boolean("plot", False, "whether to plot resulting model density")
 
 flags.DEFINE_integer("dim", 2, "dimension of the base space")
 
 FLAGS = flags.FLAGS
-
-# def gaussian_distribution_sampler(
-#     prng_key: int=42,
-#     mean: jnp.ndarray=0,
-#     var: jnp.ndarray=1,
-#     batch_size: int=256
-#     ) -> jnp.ndarray:
-#     """
-#     TODO: test the sampler
-#     """
-    
-#     dim = mean.shape[0]
-#     C = jnp.linalg.cholesky(var)
-#     sample = jax.random.normal(jax.random.PRNGKey(prng_key), (batch_size, dim)) @ C.T + jnp.reshape(mean, (1, dim))
-#     return sample
 
 def gaussian_2d(
     r: jnp.ndarray,
@@ -88,12 +74,12 @@ def sample_source_fn(
   
   dim = 2
   R = 5
-  component_indices = jax.random.choice(seed, a=2, shape=(sample_shape, ), p=jnp.ones(2)/2)
-  sample_ = jnp.zeros((2, sample_shape, dim))
+  component_indices = jax.random.choice(seed, a=4, shape=(sample_shape, ), p=jnp.ones(4)/4)
+  sample_ = jnp.zeros((4, sample_shape, dim))
   sample_ = sample_.at[0].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,R]))
   sample_ = sample_.at[1].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R,0]))
-  #sample_ = sample_.at[2].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,-R]))
-  #sample_ = sample_.at[3].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R,0]))
+  sample_ = sample_.at[2].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,-R]))
+  sample_ = sample_.at[3].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R,0]))
 
   sample = sample_[component_indices[jnp.arange(sample_shape)], jnp.arange(sample_shape)]
   return sample
@@ -130,10 +116,10 @@ def main(_):
   model = hk.without_apply_rng(hk.multi_transform(model))
   forward_fn = jax.jit(model.apply.forward)
   inverse_fn = jax.jit(model.apply.inverse)
-  sample_fn = jax.jit(model.apply.sample, static_argnames=['sample_shape'])
+  sample_fn = jax.jit(model.apply.sample, static_argnames=["sample_shape"])
   log_prob_fn = jax.jit(model.apply.log_prob)
   key, rng = jax.random.split(rng)
-  params = model.init(key, np.zeros((1, FLAGS.dim)), np.zeros((1, 1)))
+  params = model.init(key, np.zeros((1, FLAGS.dim)), np.zeros((1,)))
   print(params.keys())
 
   opt_state = optimizer.init(params)
@@ -141,7 +127,7 @@ def main(_):
 
   # boundary condition on density
   if FLAGS.dim == 1:
-    if FLAGS.case == 'density fit':
+    if FLAGS.case == "density fit":
         # Gaussian source
         # source_prob = jax.vmap(distrax.Normal(loc=0, scale=1).prob)
 
@@ -166,14 +152,14 @@ def main(_):
     mu1 = jnp.array([-5,-5])
     mu2 = jnp.array([5,5])
     # # linear transport calculation case
-    source_prob = jax.vmap(partial(gaussian_2d, mean=mu1, var=jnp.eye(2)*var1))
-    target_prob = jax.vmap(partial(gaussian_2d, mean=mu2, var=jnp.eye(2)*var2))
+    # source_prob = jax.vmap(partial(gaussian_2d, mean=mu1, var=jnp.eye(2)*var1))
+    # target_prob = jax.vmap(partial(gaussian_2d, mean=mu2, var=jnp.eye(2)*var2))
     # multi-to-one case
-    # source_prob = jax.vmap(gaussian_mixture_2d)
-    # target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([0,0]), var=jnp.eye(2)*var2))
+    source_prob = jax.vmap(gaussian_mixture_2d)
+    target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([0,0]), var=jnp.eye(2)*var2))
 
   # definition of loss functions
-  @partial(jax.jit, static_argnames=['batch_size'])
+  @partial(jax.jit, static_argnames=["batch_size"])
   def kl_loss_fn(params: hk.Params, rng: PRNGKey, cond, batch_size: int) -> Array:
     """KL-divergence between the normalizing flow and the reference distribution.
     
@@ -192,7 +178,7 @@ def main(_):
     )
     return (log_prob - jnp.log(source_prob(samples)*(1-cond) + target_prob(samples)*cond)).mean()
 
-  @partial(jax.jit, static_argnames=['batch_size'])
+  @partial(jax.jit, static_argnames=["batch_size"])
   def reverse_kl_loss_fn(params: hk.Params, rng: PRNGKey, cond, batch_size: int) -> Array:
     """reverse KL-divergence between the normalizing flow and the reference distribution.
     
@@ -201,7 +187,7 @@ def main(_):
     samples1 = sample_source_fn(seed=rng, sample_shape=batch_size)
     samples2 = sample_target_fn(seed=rng, sample_shape=batch_size)
     samples = samples1 * (1-cond) + samples2 * cond
-    fake_cond_ = np.ones((batch_size, 1)) * cond
+    fake_cond_ = np.ones((1, )) * cond
     log_prob = model.apply.log_prob(
         params,
         samples,
@@ -209,7 +195,7 @@ def main(_):
     )
     return -log_prob.mean()
 
-  @partial(jax.jit, static_argnames=['batch_size'])
+  @partial(jax.jit, static_argnames=["batch_size"])
   def mse_loss_fn(params: hk.Params, rng: PRNGKey, cond, batch_size: int) -> Array:
     """KL-divergence between the normalizing flow and the reference distribution.
     
@@ -228,7 +214,7 @@ def main(_):
     )
     return ((jnp.exp(log_prob) - (source_prob(samples)*(1-cond) + target_prob(samples)*cond))**2).mean()
   
-  @partial(jax.jit, static_argnames=['batch_size'])
+  @partial(jax.jit, static_argnames=["batch_size"])
   def potential_loss_fn(params: hk.Params, rng: PRNGKey, cond, batch_size: int) -> Array:
       
     fake_cond_ = np.ones((batch_size, 1)) * cond
@@ -241,7 +227,7 @@ def main(_):
     return potential_fn(samples).mean()
   
   # # kinetic energy based on auto-differentiation
-  # @partial(jax.jit, static_argnames=['batch_size'])
+  # @partial(jax.jit, static_argnames=["batch_size"])
   # def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
   #     """Kinetic energy along the trajectory at time t
   #     """
@@ -254,7 +240,7 @@ def main(_):
   #     return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2) * FLAGS.dim / 2
   
   # kinetic energy based on finite difference
-  @partial(jax.jit, static_argnames=['batch_size'])
+  @partial(jax.jit, static_argnames=["batch_size"])
   def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
       """Kinetic energy along the trajectory at time t
       """
@@ -267,19 +253,21 @@ def main(_):
       # velocity.shape = [batch_size, 2]
       return jnp.mean(velocity**2) * FLAGS.dim / 2
   
-  # # density fitting using the KL divergence, the exact form of the distribution is available
-  # @partial(jax.jit, static_argnames=['batch_size'])
-  # def density_fit_loss_fn(params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int) -> Array:
-
-  #   return kl_loss_fn(params, rng, 0, batch_size) + kl_loss_fn(params, rng, 1, batch_size)
   
   # density fitting using the reverse KL divergence, the samples from the target distribution is available
-  @partial(jax.jit, static_argnames=['batch_size'])
-  def density_fit_loss_fn(params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int) -> Array:
+  @partial(jax.jit, static_argnames=["batch_size"])
+  def density_fit_kl_loss_fn(params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int) -> Array:
+
+    return kl_loss_fn(params, rng, 0, batch_size) + kl_loss_fn(params, rng, 1, batch_size)
+  
+
+  @partial(jax.jit, static_argnames=["batch_size"])
+  def density_fit_rkl_loss_fn(params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int) -> Array:
 
     return reverse_kl_loss_fn(params, rng, 0, batch_size) + reverse_kl_loss_fn(params, rng, 1, batch_size)
 
-  @partial(jax.jit, static_argnames=['batch_size'])
+
+  @partial(jax.jit, static_argnames=["batch_size"])
   def wasserstein_loss_fn(params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int) -> Array:
     """Loss of the Wasserstein gradient flow, including:
 
@@ -311,7 +299,7 @@ def main(_):
       #weight = .01
       return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0] - velocity_[jnp.arange(batch_size),:,jnp.arange(batch_size),0]) * FLAGS.dim / 2
     
-    loss = lambda_ * density_fit_loss_fn(params, rng, lambda_, batch_size)
+    loss = lambda_ * density_fit_rkl_loss_fn(params, rng, lambda_, batch_size)
     t_batch_size = 20 # 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     #t_batch = jnp.linspace(0.05, 0.95, t_batch_size)
@@ -320,10 +308,10 @@ def main(_):
 
     return loss
   
-  @partial(jax.jit, static_argnames=['batch_size'])
+  @partial(jax.jit, static_argnames=["batch_size"])
   def mfg_loss_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
-    '''Loss of the mean-field potential game
-    '''
+    """Loss of the mean-field potential game
+    """
 
     # loss = 100000*mse_loss_fn(params, rng, 0, batch_size) + potential_loss_fn(params, rng, 1, batch_size)
     loss = 0
@@ -331,7 +319,7 @@ def main(_):
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     for _ in range(t_batch_size):
         loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
-    loss += density_fit_loss_fn(params, rng, batch_size) * 1000
+    loss += density_fit_kl_loss_fn(params, rng, batch_size) * 1000
 
     return loss
 
@@ -340,6 +328,15 @@ def main(_):
              opt_state: OptState) -> Tuple[Array, hk.Params, OptState]:
     """Single SGD update step."""
     loss, grads = jax.value_and_grad(wasserstein_loss_fn)(params, rng, lambda_, FLAGS.batch_size)
+    updates, new_opt_state = optimizer.update(grads, opt_state)
+    new_params = optax.apply_updates(params, updates)
+    return loss, new_params, new_opt_state
+  
+  @jax.jit
+  def pretrain_update(params: hk.Params, rng: PRNGKey, lambda_,
+             opt_state: OptState) -> Tuple[Array, hk.Params, OptState]:
+    """Single SGD update step."""
+    loss, grads = jax.value_and_grad(density_fit_rkl_loss_fn)(params, rng, lambda_, FLAGS.batch_size)
     updates, new_opt_state = optimizer.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return loss, new_params, new_opt_state
@@ -356,15 +353,41 @@ def main(_):
   # elif FLAGS.dim == 2:
   #   fake_cond = np.zeros((FLAGS.batch_size, 1))
   #   samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-  #   plt.scatter(samples[...,0], samples[...,1], s=3, c='r')
+  #   plt.scatter(samples[...,0], samples[...,1], s=3, c="r")
   #   fake_cond = np.ones((FLAGS.batch_size, 1))
   #   samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-  #   plt.scatter(samples[...,0], samples[...,1], s=1, c='b')
+  #   plt.scatter(samples[...,0], samples[...,1], s=1, c="b")
+
+  # pretraining loop
+  if False:
+    loss_hist = []
+    lambda_ = 1
+    iters = tqdm(range(FLAGS.epochs))
+    for step in iters:
+      key, rng = jax.random.split(rng)
+      loss, params, opt_state = pretrain_update(params, key, lambda_, opt_state)
+      loss_hist.append(loss)
+
+      if step % FLAGS.eval_frequency == 0:
+        desc_str = f"{loss=:.4e}"
+
+        key, rng = jax.random.split(rng)
+        if FLAGS.case == "density fit":
+          KL0 = kl_loss_fn(params, rng, 0, FLAGS.batch_size)
+          desc_str += f" | {KL0=:.4e} "
+          KL1 = kl_loss_fn(params, rng, 1, FLAGS.batch_size)
+          desc_str += f" | {KL1=:.4e} "
+        
+        iters.set_description_str(desc_str)
+
+    plt.clf()
+    plt.plot(loss_hist[5000:])
+    plt.savefig("results/fig/pretrain_loss_hist.pdf")
 
   # training loop
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
-  lambda_ = 100
+  lambda_ = 1000
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, lambda_, opt_state)
@@ -375,22 +398,12 @@ def main(_):
       desc_str = f"{loss=:.4e}"
 
       key, rng = jax.random.split(rng)
-      # density fit
-      if FLAGS.case == 'density fit':
-        KL0 = kl_loss_fn(params, rng, 0, FLAGS.batch_size)
-        desc_str += f" | {KL0=:.4e} "
-        KL1 = kl_loss_fn(params, rng, 1, FLAGS.batch_size)
-        desc_str += f" | {KL1=:.4e} "
-        MSE0 = mse_loss_fn(params, rng, 0, FLAGS.batch_size)
-        desc_str += f" | {MSE0=:.4e} "
-        MSE1 = mse_loss_fn(params, rng, 1, FLAGS.batch_size)
-        desc_str += f" | {MSE1=:.4e} "
       # wasserstein distance
-      elif FLAGS.case == 'wasserstein':
-        KL = density_fit_loss_fn(params, rng, lambda_, FLAGS.batch_size)
+      if FLAGS.case == "wasserstein":
+        KL = density_fit_kl_loss_fn(params, rng, lambda_, FLAGS.batch_size)
         kin = loss - KL * lambda_
         desc_str += f"{KL=:.4f} | {kin=:.1f} | {lambda_=:.1f}"
-      elif FLAGS.case == 'mfg':
+      elif FLAGS.case == "mfg":
         return
       
       iters.set_description_str(desc_str)
@@ -405,14 +418,14 @@ def main(_):
     fake_cond = np.ones((FLAGS.batch_size, 1))
     samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
     plt.hist(samples[...,0], bins=bins*4, density=True)
-    print('kinetic energy: ', utils.calc_kinetic_energy(
+    print("kinetic energy: ", utils.calc_kinetic_energy(
           sample_fn, 
           forward_fn, 
           inverse_fn, 
           params, 
           rng,
           FLAGS.dim))
-    plt.savefig('results/fig/density_1d.pdf')
+    plt.savefig("results/fig/density_1d.pdf")
     plt.show()
 
     plot_1d_map = utils.plot_1d_map(
@@ -422,17 +435,17 @@ def main(_):
     )
     plot_1d_map
 
-  elif FLAGS.dim == 2 and FLAGS.case == 'density fit':
+  elif FLAGS.dim == 2 and FLAGS.case == "density fit":
     plt.clf()
     fake_cond = np.zeros((FLAGS.batch_size, 1))
     samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.scatter(samples[...,0], samples[...,1], s=3, c='r')
+    plt.scatter(samples[...,0], samples[...,1], s=3, c="r")
     fake_cond = np.ones((FLAGS.batch_size, 1))
     samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.scatter(samples[...,0], samples[...,1], s=1, c='b')
-    plt.savefig('results/fig/density_fit.pdf')
+    plt.scatter(samples[...,0], samples[...,1], s=1, c="b")
+    plt.savefig("results/fig/density_fit.pdf")
 
-  elif FLAGS.dim == 2 and FLAGS.case == 'wasserstein':
+  elif FLAGS.dim == 2 and FLAGS.case == "wasserstein":
     # this plot the distribution at t=0,1 after training
     # as well as the error of the learned mapping at t=0, 1
     # based on grid evaluation
@@ -446,8 +459,52 @@ def main(_):
         mu2,
         var1,
         var2,
-        fig_name=FLAGS.case+'_dist_traj'
+        fig_name=FLAGS.case+"_dist_traj"
     )
+
+    plt.clf()
+    plt.figure(figsize=(10,2))
+    t_array = jnp.linspace(0, 1, 5)
+    cmap = plt.cm.Reds
+    norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
+
+    for i in range(5):
+      plt.subplot(1,5,i+1)
+      fake_cond = np.ones((FLAGS.batch_size, 1)) * t_array[i]
+      samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
+      plt.scatter(samples[...,0], samples[...,1], s=1, label=str(t_array[i]), color=cmap(norm(t_array[i])))
+      plt.legend()
+
+    plt.savefig("results/fig/density_fit.pdf")
+    plt.clf()
+
+
+    plt.clf()
+    plt.figure(figsize=(10,2))
+    t_array = jnp.linspace(0, 1, 5)
+    cmap = plt.cm.Reds
+    norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
+
+    for i in range(5):
+      plt.subplot(1,5,i+1)
+      x_min = -8
+      x_max = 8
+      x = np.linspace(x_min, x_max, 100)
+      y = np.linspace(x_min, x_max, 100)
+      X, Y = np.meshgrid(x, y)
+      breakpoint()
+      fake_cond_ = np.ones((1, )) * t_array[i]
+      log_prob = model.apply.log_prob(
+        params,
+        grid,
+        cond=fake_cond_
+      )
+
+      plt.legend()
+
+    plt.savefig("results/fig/density_evolve.pdf")
+    plt.clf()
+
 
     # # plot the trajectory of the distribution and velocity field
     plot_traj_and_velocity = partial(
@@ -460,11 +517,11 @@ def main(_):
     plot_traj_and_velocity(quiver_size=0.01)
     plt.clf()
     plt.plot(jnp.linspace(5001,FLAGS.epochs,FLAGS.epochs-5000), jnp.array(loss_hist[5000:]))
-    plt.savefig('results/fig/loss_hist.pdf')
+    plt.savefig("results/fig/loss_hist.pdf")
 
     param_count = sum(x.size for x in jax.tree.leaves(params))
-    print('Network parameters: {}'.format(param_count))
-    # print('kinetic energy: ', 
+    print("Network parameters: {}".format(param_count))
+    # print("kinetic energy: ", 
     #   utils.calc_kinetic_energy(
     #     sample_fn, 
     #     forward_fn, 
@@ -474,13 +531,13 @@ def main(_):
     #     dim=FLAGS.dim)
     # )
     
-    # print('kl loss: ',
+    # print("kl loss: ",
     #   kl_loss_fn(params, rng, cond=0, FLAGS.batch_size))
     
   # plot the 1D mfg example：
   # plot the histogram w.r.t. the ground truth solution
   # plot the velocity at several time step v.s. the ground truth
-  # if FLAGS.case == 'mfg' and FLAGS.dim == 1:
+  # if FLAGS.case == "mfg" and FLAGS.dim == 1:
   #   plt.clf()
   #   t = jnp.linspace(0, 1, 6)
   #   for i in range(2):
@@ -491,9 +548,9 @@ def main(_):
   #       plt.hist(samples[...,0], bins=bins*4, density=True)
   #       x = jnp.linspace(-5, 5, 1000)
   #       rho = jax.vmap(distrax.Normal(loc=0, scale=jnp.sqrt(beta*2*(2-t[i*3+j]))).prob)(x)
-  #       plt.plot(x, rho, label=r'$\rho_*$')
+  #       plt.plot(x, rho, label=r"$\rho_*$")
   #       plt.legend()
-  #   plt.savefig('results/fig/mfg.pdf')
+  #   plt.savefig("results/fig/mfg.pdf")
   #   plt.clf()
 
   #   kinetic_err = []
@@ -507,15 +564,15 @@ def main(_):
   #     ground_truth = -jnp.sqrt(1/8/(2-t)) * samples
   #     kinetic_err.append(jnp.mean((velocity - ground_truth)**2))
   #     plt.figure(figsize=(4, 2))
-  #     plt.scatter(samples, velocity, c='b', label='compute', s=.1)
-  #     plt.scatter(samples, ground_truth, c='r', label='ground truth', s=.1)
+  #     plt.scatter(samples, velocity, c="b", label="compute", s=.1)
+  #     plt.scatter(samples, ground_truth, c="r", label="ground truth", s=.1)
   #     plt.legend()
-  #     plt.title('t = {:.2f}'.format(t))
-  #     plt.savefig('results/fig/{:.2f}.pdf'.format(t))
+  #     plt.title("t = {:.2f}".format(t))
+  #     plt.savefig("results/fig/{:.2f}.pdf".format(t))
   #     plt.clf()
-  #   plt.plot(t_array, kinetic_err, label=r'$\left\| \dot{x} - \dot{x}_* \right\|^2$')
+  #   plt.plot(t_array, kinetic_err, label=r"$\left\| \dot{x} - \dot{x}_* \right\|^2$")
   #   plt.legend()
-  #   plt.savefig('results/fig/mfg_kin.pdf')
+  #   plt.savefig("results/fig/mfg_kin.pdf")
   #   breakpoint()
 
   #   def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:

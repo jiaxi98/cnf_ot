@@ -48,6 +48,7 @@ def plot_distribution_trajectory(
     cmap = plt.cm.Reds
     norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
 
+    plt.subplot(131)
     for i in range(6):
       fake_cond = np.ones((batch_size, 1)) * t_array[i]
       samples = sample_fn(params, seed=key, sample_shape=(batch_size, ), cond=fake_cond)
@@ -58,7 +59,7 @@ def plot_distribution_trajectory(
     xy = jnp.array(jnp.meshgrid(x, y))
     xy = jnp.transpose(jnp.reshape(xy, (2, 10000)))
     fake_cond = jnp.zeros_like(xy[:,0:1])
-    xy_forward = forward_fn(params, xy, fake_cond)
+    xy_forward = forward_fn(params, xy, jnp.zeros(1))
     xy_correct = mu1 + xy * jnp.sqrt(var1)
     err = jnp.sum((xy_forward - xy_correct)**2, axis=1)
     plt.imshow(jnp.reshape(err, (100, 100)))
@@ -67,7 +68,7 @@ def plot_distribution_trajectory(
 
     plt.subplot(133)
     fake_cond = jnp.ones_like(xy[:,0:1])
-    xy_forward = forward_fn(params, xy, fake_cond)
+    xy_forward = forward_fn(params, xy, jnp.zeros(1))
     xy_correct = mu2 + xy * jnp.sqrt(var2)
     err = jnp.sum((xy_forward - xy_correct)**2, axis=1)
     plt.imshow(jnp.reshape(err, (100, 100)))
@@ -78,6 +79,7 @@ def plot_distribution_trajectory(
     plt.savefig('results/fig/'+fig_name+'.pdf')
 
     plt.clf()
+
 
 def plot_traj_and_velocity(
     sample_fn, 
@@ -104,14 +106,13 @@ def plot_traj_and_velocity(
 
         fake_cond_ = np.ones((batch_size_velocity, 1)) * t
         samples = sample_fn(params, seed=key, sample_shape=(batch_size_velocity, ), cond=fake_cond_)
-        xi = inverse_fn(params, samples, fake_cond_)
-        velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
-        #breakpoint()
+        xi = inverse_fn(params, samples, jnp.zeros(1))
+        velocity = jax.jacfwd(partial(forward_fn, params, xi))(jnp.zeros(1))
         ax2[i//2, i%2].quiver(
             samples[...,0], 
             samples[...,1], 
-            velocity[jnp.arange(batch_size_velocity),0,jnp.arange(batch_size_velocity),0], 
-            velocity[jnp.arange(batch_size_velocity),1,jnp.arange(batch_size_velocity),0],) 
+            velocity[:,0,0], 
+            velocity[:,1,0],) 
             #scale=quiver_size)
         i += 1
     plt.savefig('results/fig/traj.pdf')
