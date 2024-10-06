@@ -50,12 +50,13 @@ def plot_distribution_trajectory(
   mu2: float,
   var1: float,
   var2: float,
-  fig_name: str = 'dist_traj'
+  fig_name: str = "dist_traj"
 ):
   t_array = jnp.linspace(0.05, 0.95, 6)
   cmap = plt.cm.Reds
   norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
 
+  plt.clf()
   plt.subplot(131)
   for i in range(6):
     fake_cond = np.ones((batch_size, 1)) * t_array[i]
@@ -75,8 +76,8 @@ def plot_distribution_trajectory(
   xy_correct = mu1 + xy * jnp.sqrt(var1)
   err = jnp.sum((xy_forward - xy_correct)**2, axis=1)
   plt.imshow(jnp.reshape(err, (100, 100)))
-  plt.axis('off')
-  plt.colorbar(orientation='horizontal', fraction=0.2)
+  plt.axis("off")
+  plt.colorbar(orientation="horizontal", fraction=0.2)
 
   plt.subplot(133)
   fake_cond = jnp.ones_like(xy[:, 0:1])
@@ -84,16 +85,103 @@ def plot_distribution_trajectory(
   xy_correct = mu2 + xy * jnp.sqrt(var2)
   err = jnp.sum((xy_forward - xy_correct)**2, axis=1)
   plt.imshow(jnp.reshape(err, (100, 100)))
-  plt.axis('off')
-  plt.colorbar(orientation='horizontal', fraction=0.2)
+  plt.axis("off")
+  plt.colorbar(orientation="horizontal", fraction=0.2)
   plt.suptitle(
-    r'$\rho_0 \sim N(({},{})^T,I), \rho_1 \sim N(({},{})^T,I)$'.format(
+    r"$\rho_0 \sim N(({},{})^T,I), \rho_1 \sim N(({},{})^T,I)$".format(
       mu1[0], mu1[1], mu2[0], mu2[1]
     )
   )
-  plt.savefig('results/fig/' + fig_name + '.pdf')
+  plt.savefig("results/fig/" + fig_name + ".pdf")
+  plt.clf()
+
+
+def plot_samples_snapshot(
+  sample_fn: callable,
+  params: hk.Params,
+  key: PRNGKey,
+  batch_size,
+):
 
   plt.clf()
+  plt.figure(figsize=(10, 2))
+  t_array = jnp.linspace(0, 1, 5)
+  cmap = plt.cm.Reds
+  norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
+
+  for i in range(5):
+    plt.subplot(1, 5, i + 1)
+    fake_cond = np.ones((batch_size, 1)) * t_array[i]
+    samples = sample_fn(
+      params, seed=key, sample_shape=(batch_size, ), cond=fake_cond
+    )
+    plt.scatter(
+      samples[..., 0],
+      samples[..., 1],
+      s=1,
+      label=str(t_array[i]),
+      color=cmap(norm(t_array[i]))
+    )
+    plt.legend()
+
+  plt.savefig("results/fig/samples.pdf")
+  plt.clf()
+
+
+def plot_density_snapshot(
+  log_prob_fn: callable,
+  params: hk.Params,
+):
+
+  plt.clf()
+  plt.figure(figsize=(10, 2))
+  t_array = jnp.linspace(0, 1, 5)
+  cmap = plt.cm.Reds
+  norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
+
+  for i in range(5):
+    plt.subplot(1, 5, i + 1)
+    x_min = -8
+    x_max = 8
+    x = np.linspace(x_min, x_max, 100)
+    y = np.linspace(x_min, x_max, 100)
+    X, Y = np.meshgrid(x, y)
+    XY = jnp.hstack([X.reshape(100**2, 1), Y.reshape(100**2, 1)])
+    fake_cond_ = np.ones((1, )) * t_array[i]
+    log_prob = log_prob_fn(params, XY, cond=fake_cond_)
+    plt.imshow(jnp.exp(log_prob.reshape(100, 100)))
+    plt.title("t = {:.2f}".format(t_array[i]))
+
+  plt.savefig("results/fig/density.pdf")
+  plt.clf()
+
+
+def plot_trajectory(
+  forward_fn: callable,
+  inverse_fn: callable,
+  log_prob_fn: callable,
+  params: hk.Params,
+  r_: jnp.array,
+):
+  
+  plt.clf()
+  x_min = -8
+  x_max = 8
+  x = np.linspace(x_min, x_max, 100)
+  y = np.linspace(x_min, x_max, 100)
+  X, Y = np.meshgrid(x, y)
+  XY = jnp.hstack([X.reshape(100**2, 1), Y.reshape(100**2, 1)])
+  fake_cond_ = np.zeros((1, ))
+  log_prob = log_prob_fn(params, XY, cond=fake_cond_)
+  plt.imshow(jnp.exp(log_prob.reshape(100, 100)))
+  
+  xi = inverse_fn(params, r_, jnp.zeros(1))
+  t_array = jnp.linspace(0,1,20)
+  colors = ["red", "green", "blue", "yellow"]
+  for t in t_array:
+    r_ = forward_fn(params, xi, jnp.ones(1) * t)
+    plt.scatter((r_[:, 0]+8)/16*100, (r_[:, 1]+8)/16*100, c="red", s=3)
+  plt.savefig("results/fig/traj.pdf")
 
 
 def plot_traj_and_velocity(
@@ -123,18 +211,24 @@ def plot_traj_and_velocity(
     ax1[i // 2, i % 2].scatter(samples[..., 0], samples[..., 1], s=1)
 
     fake_cond_ = np.ones((batch_size_velocity, 1)) * t
+    x_min = -8
+    x_max = 8
+    x = np.linspace(x_min, x_max, 10)
+    y = np.linspace(x_min, x_max, 10)
+    X, Y = np.meshgrid(x, y)
+    XY = jnp.hstack([X.reshape(10**2, 1), Y.reshape(10**2, 1)])
     # samples = sample_fn(params, seed=key, sample_shape=(batch_size_velocity, ), cond=fake_cond_)
-    xi = inverse_fn(params, samples, jnp.zeros(1))
+    xi = inverse_fn(params, XY, jnp.zeros(1))
     velocity = jax.jacfwd(partial(forward_fn, params, xi))(jnp.zeros(1))
     ax2[i // 2, i % 2].quiver(
-      samples[..., 0],
-      samples[..., 1],
+      XY[..., 0],
+      XY[..., 1],
       velocity[:, 0, 0],
       velocity[:, 1, 0],
     )
     #scale=quiver_size)
     i += 1
-  plt.savefig('results/fig/traj.pdf')
+  plt.savefig("results/fig/traj.pdf")
   plt.clf()
 
 
@@ -153,9 +247,9 @@ def plot_1d_map(
     x_axis = np.linspace(-3, 3, batch_size_pdf).reshape(-1, 1)
     y_axis = forward_fn(params, x_axis, fake_cond_)
     true_y = x_axis + final_mean * t
-    ax1[i // 2, i % 2].plot(x_axis, y_axis, 'b')
-    ax1[i // 2, i % 2].plot(x_axis, true_y, 'r')
+    ax1[i // 2, i % 2].plot(x_axis, y_axis, "b")
+    ax1[i // 2, i % 2].plot(x_axis, true_y, "r")
     i += 1
-  plt.savefig('results/fig/mapping_1d.pdf')
+  plt.savefig("results/fig/mapping_1d.pdf")
   # plt.clf()
   plt.show()

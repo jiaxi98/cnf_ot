@@ -64,12 +64,12 @@ def gaussian_2d(
 def prob_fn1_(r: jnp.ndarray, ) -> jnp.ndarray:
   """t=0"""
 
-  R = 5
-  var = 1
-  rho1 = partial(gaussian_2d, mean=jnp.array([0, R]), var=jnp.eye(2) * var)
-  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0]), var=jnp.eye(2) * var)
-  rho3 = partial(gaussian_2d, mean=jnp.array([0, -R]), var=jnp.eye(2) * var)
-  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0]), var=jnp.eye(2) * var)
+  R = 5.0
+  var = 1.0
+  rho1 = partial(gaussian_2d, mean=jnp.array([0.0, R]), var=jnp.eye(2) * var)
+  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0.0]), var=jnp.eye(2) * var)
+  rho3 = partial(gaussian_2d, mean=jnp.array([0.0, -R]), var=jnp.eye(2) * var)
+  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0.0]), var=jnp.eye(2) * var)
   return (rho1(r) + rho2(r) + rho3(r) + rho4(r)) / 4
 
 
@@ -79,23 +79,23 @@ def sample_fn1(
 ):
   """t=0"""
 
-  dim = 2
-  R = 5
+  dim = 2.0
+  R = 5.0
   component_indices = jax.random.choice(
     seed, a=4, shape=(sample_shape, ), p=jnp.ones(4) / 4
   )
   sample_ = jnp.zeros((4, sample_shape, dim))
   sample_ = sample_.at[0].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, R])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, R])
   )
   sample_ = sample_.at[1].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0.0])
   )
   sample_ = sample_.at[2].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, -R])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, -R])
   )
   sample_ = sample_.at[3].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0.0])
   )
 
   sample = sample_[component_indices[jnp.arange(sample_shape)],
@@ -106,7 +106,7 @@ def sample_fn1(
 def prob_fn2_(r: jnp.ndarray, ) -> jnp.ndarray:
   """t=1"""
 
-  rho1 = partial(gaussian_2d, mean=jnp.array([0, 0]), var=jnp.eye(2))
+  rho1 = partial(gaussian_2d, mean=jnp.array([0.0, 0.0]), var=jnp.eye(2))
   return rho1(r)
 
 
@@ -123,7 +123,7 @@ def sample_fn2(
 def prob_fn2__(r: jnp.ndarray, ) -> jnp.ndarray:
   """t=1"""
 
-  rho1 = partial(gaussian_2d, mean=jnp.array([-3, -3]), var=jnp.eye(2))
+  rho1 = partial(gaussian_2d, mean=jnp.array([-3.0, -3.0]), var=jnp.eye(2))
   return rho1(r)
 
 
@@ -135,7 +135,7 @@ def sample_fn2_(
 
   dim = 2
   return jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array(
-    [-3, -3]
+    [-3.0, -3.0]
   ).reshape((1, dim))
 
 
@@ -143,11 +143,11 @@ def prob_fn3_(r: jnp.ndarray, ) -> jnp.ndarray:
   """t=0.5"""
 
   R = 2.5
-  var = 1
-  rho1 = partial(gaussian_2d, mean=jnp.array([0, R]), var=jnp.eye(2) * var)
-  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0]), var=jnp.eye(2) * var)
-  rho3 = partial(gaussian_2d, mean=jnp.array([0, -R]), var=jnp.eye(2) * var)
-  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0]), var=jnp.eye(2) * var)
+  var = 1.0
+  rho1 = partial(gaussian_2d, mean=jnp.array([0.0, R]), var=jnp.eye(2) * var)
+  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0.0]), var=jnp.eye(2) * var)
+  rho3 = partial(gaussian_2d, mean=jnp.array([0.0, -R]), var=jnp.eye(2) * var)
+  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0.0]), var=jnp.eye(2) * var)
   return (rho1(r) + rho2(r) + rho3(r) + rho4(r)) / 4
 
 
@@ -164,16 +164,16 @@ def sample_fn3(
   )
   sample_ = jnp.zeros((4, sample_shape, dim))
   sample_ = sample_.at[0].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, R])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, R])
   )
   sample_ = sample_.at[1].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0.0])
   )
   sample_ = sample_.at[2].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, -R])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, -R])
   )
   sample_ = sample_.at[3].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0.0])
   )
 
   sample = sample_[component_indices[jnp.arange(sample_shape)],
@@ -185,11 +185,11 @@ def prob_fn4_(r: jnp.ndarray, ) -> jnp.ndarray:
   """t=0.25"""
 
   R = 3.75
-  var = 1
-  rho1 = partial(gaussian_2d, mean=jnp.array([0, R]), var=jnp.eye(2) * var)
-  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0]), var=jnp.eye(2) * var)
-  rho3 = partial(gaussian_2d, mean=jnp.array([0, -R]), var=jnp.eye(2) * var)
-  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0]), var=jnp.eye(2) * var)
+  var = 1.0
+  rho1 = partial(gaussian_2d, mean=jnp.array([0.0, R]), var=jnp.eye(2) * var)
+  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0.0]), var=jnp.eye(2) * var)
+  rho3 = partial(gaussian_2d, mean=jnp.array([0.0, -R]), var=jnp.eye(2) * var)
+  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0.0]), var=jnp.eye(2) * var)
   return (rho1(r) + rho2(r) + rho3(r) + rho4(r)) / 4
 
 
@@ -206,16 +206,16 @@ def sample_fn4(
   )
   sample_ = jnp.zeros((4, sample_shape, dim))
   sample_ = sample_.at[0].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, R])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, R])
   )
   sample_ = sample_.at[1].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0.0])
   )
   sample_ = sample_.at[2].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, -R])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, -R])
   )
   sample_ = sample_.at[3].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0.0])
   )
 
   sample = sample_[component_indices[jnp.arange(sample_shape)],
@@ -227,11 +227,11 @@ def prob_fn5_(r: jnp.ndarray, ) -> jnp.ndarray:
   """t=0.75"""
 
   R = 1.25
-  var = 1
-  rho1 = partial(gaussian_2d, mean=jnp.array([0, R]), var=jnp.eye(2) * var)
-  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0]), var=jnp.eye(2) * var)
-  rho3 = partial(gaussian_2d, mean=jnp.array([0, -R]), var=jnp.eye(2) * var)
-  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0]), var=jnp.eye(2) * var)
+  var = 1.0
+  rho1 = partial(gaussian_2d, mean=jnp.array([0.0, R]), var=jnp.eye(2) * var)
+  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0.0]), var=jnp.eye(2) * var)
+  rho3 = partial(gaussian_2d, mean=jnp.array([0.0, -R]), var=jnp.eye(2) * var)
+  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0.0]), var=jnp.eye(2) * var)
   return (rho1(r) + rho2(r) + rho3(r) + rho4(r)) / 4
 
 
@@ -248,16 +248,16 @@ def sample_fn5(
   )
   sample_ = jnp.zeros((4, sample_shape, dim))
   sample_ = sample_.at[0].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, R])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, R])
   )
   sample_ = sample_.at[1].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0.0])
   )
   sample_ = sample_.at[2].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, -R])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, -R])
   )
   sample_ = sample_.at[3].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0.0])
   )
 
   sample = sample_[component_indices[jnp.arange(sample_shape)],

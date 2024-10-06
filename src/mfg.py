@@ -64,10 +64,10 @@ def gaussian_2d(
 def gaussian_mixture_2d(r: jnp.ndarray, ) -> jnp.ndarray:
 
   R = 10
-  rho1 = partial(gaussian_2d, mean=jnp.array([0, R]), var=jnp.eye(2))
-  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0]), var=jnp.eye(2))
-  rho3 = partial(gaussian_2d, mean=jnp.array([0, -R]), var=jnp.eye(2))
-  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0]), var=jnp.eye(2))
+  rho1 = partial(gaussian_2d, mean=jnp.array([0.0, R]), var=jnp.eye(2))
+  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0.0]), var=jnp.eye(2))
+  rho3 = partial(gaussian_2d, mean=jnp.array([0.0, -R]), var=jnp.eye(2))
+  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0.0]), var=jnp.eye(2))
   return (rho1(r) + rho2(r) + rho3(r) + rho4(r)) / 4
 
 
@@ -79,20 +79,32 @@ def sample_source_fn(
   dim = 2
   R = 5
   component_indices = jax.random.choice(
-    seed, a=4, shape=(sample_shape, ), p=jnp.ones(4) / 4
+    seed, a=8, shape=(sample_shape, ), p=jnp.ones(8) / 8
   )
-  sample_ = jnp.zeros((4, sample_shape, dim))
+  sample_ = jnp.zeros((8, sample_shape, dim))
   sample_ = sample_.at[0].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, R])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, R])
   )
   sample_ = sample_.at[1].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0.0])
   )
   sample_ = sample_.at[2].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, -R])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, -R])
   )
   sample_ = sample_.at[3].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0.0])
+  )
+  sample_ = sample_.at[4].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.6*R, 0.8*R])
+  )
+  sample_ = sample_.at[5].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.6*R, -0.8*R])
+  )
+  sample_ = sample_.at[6].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-0.6*R, -0.8*R])
+  )
+  sample_ = sample_.at[7].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-0.6*R, 0.8*R])
   )
 
   sample = sample_[component_indices[jnp.arange(sample_shape)],
@@ -354,6 +366,8 @@ def main(_):
       ) * FLAGS.dim / 2
 
     loss = lambda_ * density_fit_rkl_loss_fn(params, rng, lambda_, batch_size)
+    # loss = lambda_ * (density_fit_rkl_loss_fn(params, rng, lambda_, batch_size) -
+    #   density_fit_kl_loss_fn(params, rng, lambda_, batch_size))
     t_batch_size = 20  # 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     #t_batch = jnp.linspace(0.05, 0.95, t_batch_size)
@@ -401,23 +415,7 @@ def main(_):
     updates, new_opt_state = optimizer.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return loss, new_params, new_opt_state
-
-  # plot the distribution at t=0, 1 before training
-  # plt.subplot(121)
-  # if FLAGS.dim == 1:
-  #   fake_cond = np.zeros((FLAGS.batch_size, 1))
-  #   samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-  #   plt.hist(samples[...,0], bins=bins*4, density=True)
-  #   fake_cond = np.ones((FLAGS.batch_size, 1))
-  #   samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-  #   plt.hist(samples[...,0], bins=bins*4, density=True)
-  # elif FLAGS.dim == 2:
-  #   fake_cond = np.zeros((FLAGS.batch_size, 1))
-  #   samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-  #   plt.scatter(samples[...,0], samples[...,1], s=3, c="r")
-  #   fake_cond = np.ones((FLAGS.batch_size, 1))
-  #   samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-  #   plt.scatter(samples[...,0], samples[...,1], s=1, c="b")
+  
 
   # pretraining loop
   if False:
@@ -461,7 +459,7 @@ def main(_):
       key, rng = jax.random.split(rng)
       # wasserstein distance
       if FLAGS.case == "wasserstein":
-        KL = density_fit_kl_loss_fn(params, rng, lambda_, FLAGS.batch_size)
+        KL = density_fit_rkl_loss_fn(params, rng, lambda_, FLAGS.batch_size)
         kin = loss - KL * lambda_
         desc_str += f"{KL=:.4f} | {kin=:.1f} | {lambda_=:.1f}"
       elif FLAGS.case == "mfg":
@@ -473,6 +471,7 @@ def main(_):
   plt.figure(figsize=(6, 2))
   plt.subplot(131)
   if FLAGS.dim == 1:
+    # for 1d we use histogram
     fake_cond = np.zeros((FLAGS.batch_size, 1))
     samples = sample_fn(
       params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
@@ -515,65 +514,31 @@ def main(_):
     # this plot the distribution at t=0,1 after training
     # as well as the error of the learned mapping at t=0, 1
     # based on grid evaluation
-    utils.plot_distribution_trajectory(
+
+    # utils.plot_distribution_trajectory(
+    #   sample_fn,
+    #   forward_fn,
+    #   params,
+    #   key,
+    #   FLAGS.batch_size,
+    #   mu1,
+    #   mu2,
+    #   var1,
+    #   var2,
+    #   fig_name=FLAGS.case + "_dist_traj"
+    # )
+
+    utils.plot_samples_snapshot(
       sample_fn,
-      forward_fn,
       params,
       key,
-      FLAGS.batch_size,
-      mu1,
-      mu2,
-      var1,
-      var2,
-      fig_name=FLAGS.case + "_dist_traj"
+      FLAGS.batch_size
     )
 
-    plt.clf()
-    plt.figure(figsize=(10, 2))
-    t_array = jnp.linspace(0, 1, 5)
-    cmap = plt.cm.Reds
-    norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
-
-    for i in range(5):
-      plt.subplot(1, 5, i + 1)
-      fake_cond = np.ones((FLAGS.batch_size, 1)) * t_array[i]
-      samples = sample_fn(
-        params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
-      )
-      plt.scatter(
-        samples[..., 0],
-        samples[..., 1],
-        s=1,
-        label=str(t_array[i]),
-        color=cmap(norm(t_array[i]))
-      )
-      plt.legend()
-
-    plt.savefig("results/fig/density_fit.pdf")
-    plt.clf()
-
-    plt.clf()
-    plt.figure(figsize=(10, 2))
-    t_array = jnp.linspace(0, 1, 5)
-    cmap = plt.cm.Reds
-    norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
-
-    for i in range(5):
-      plt.subplot(1, 5, i + 1)
-      x_min = -8
-      x_max = 8
-      x = np.linspace(x_min, x_max, 100)
-      y = np.linspace(x_min, x_max, 100)
-      X, Y = np.meshgrid(x, y)
-      XY = jnp.hstack([X.reshape(100**2, 1), Y.reshape(100**2, 1)])
-      fake_cond_ = np.ones((1, )) * t_array[i]
-      log_prob = model.apply.log_prob(params, XY, cond=fake_cond_)
-      plt.imshow(jnp.exp(log_prob.reshape(100, 100)))
-      plt.title("t = {:.2f}".format(t_array[i]))
-      plt.legend()
-
-    plt.savefig("results/fig/density_evolve.pdf")
-    plt.clf()
+    utils.plot_density_snapshot(
+      log_prob_fn,
+      params,
+    )
 
     # # plot the trajectory of the distribution and velocity field
     plot_traj_and_velocity = partial(
@@ -585,6 +550,17 @@ def main(_):
       rng=rng
     )
     plot_traj_and_velocity(quiver_size=0.01)
+
+    R = 5
+    r_ = jnp.vstack([jnp.array([0.0, R]), jnp.array([0.0, -R]), jnp.array([R, 0.0]), jnp.array([-R, 0.0])])
+    utils.plot_trajectory(
+      forward_fn,
+      inverse_fn,
+      log_prob_fn,
+      params=params,
+      r_ = r_
+    )
+    
     plt.clf()
     plt.plot(
       jnp.linspace(5001, FLAGS.epochs, FLAGS.epochs - 5000),
