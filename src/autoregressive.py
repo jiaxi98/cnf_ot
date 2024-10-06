@@ -52,7 +52,9 @@ class Autoregressive(ConditionalBijector):
     self._bijector = bijector
     self._event_shape = event_shape
     self._event_ndims = 1  # autoregressive
-    self.permutation = permutation if permutation is not None else list(range(sum(event_shape)))
+    self.permutation = permutation if permutation is not None else list(
+      range(sum(event_shape))
+    )
     self.is_conditional = sum(cond_shape) > 0
     self._name = name
     super().__init__(event_ndims_in=self._event_ndims, cond_shape=cond_shape)

@@ -23,13 +23,17 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer(
   "mlp_num_layers", 2, "Number of layers to use in the MLP conditioner."
-) # 2
-flags.DEFINE_integer("hidden_size", 16, "Hidden size of the MLP conditioner.") # 64
+)  # 2
+flags.DEFINE_integer(
+  "hidden_size", 16, "Hidden size of the MLP conditioner."
+)  # 64
 flags.DEFINE_integer(
   "num_bins", 20, "Number of bins to use in the rational-quadratic spline."
 )  # 20
-flags.DEFINE_integer("batch_size", 2048, "Batch size for training.") #2048
-flags.DEFINE_integer("test_batch_size", 2000, "Batch size for evaluation.") #20000
+flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")  #2048
+flags.DEFINE_integer(
+  "test_batch_size", 2000, "Batch size for evaluation."
+)  #20000
 flags.DEFINE_float("lr", 1e-3, "Learning rate for the optimizer.")
 flags.DEFINE_integer("epochs", 5000, "Number of training steps to run.")
 flags.DEFINE_integer("eval_frequency", 100, "How often to evaluate the model.")
@@ -56,24 +60,27 @@ FLAGS = flags.FLAGS
 #     """
 #     TODO: test the sampler
 #     """
-    
+
 #     dim = mean.shape[0]
 #     C = jnp.linalg.cholesky(var)
 #     sample = jax.random.normal(jax.random.PRNGKey(prng_key), (batch_size, dim)) @ C.T + jnp.reshape(mean, (1, dim))
 #     return sample
 
+
 def gaussian_2d(
-    r: jnp.ndarray,
-    mean: jnp.ndarray=jnp.array([2, 3]),
-    var: jnp.ndarray=jnp.array([[2, .5], [.5, 1]])
+  r: jnp.ndarray,
+  mean: jnp.ndarray = jnp.array([2, 3]),
+  var: jnp.ndarray = jnp.array([[2, .5], [.5, 1]])
 ) -> jnp.ndarray:
 
-    return jnp.exp(-0.5 * jnp.dot(jnp.dot((r - mean), jnp.linalg.inv(var)), (r - mean).T)) / jnp.sqrt(jnp.linalg.det(2 * jnp.pi * var))
+  return jnp.exp(
+    -0.5 * jnp.dot(jnp.dot((r - mean), jnp.linalg.inv(var)), (r - mean).T)
+  ) / jnp.sqrt(jnp.linalg.det(2 * jnp.pi * var))
 
-def potential_fn(
-    r: jnp.ndarray,
-) -> jnp.ndarray:
-  return jnp.sum(r**2, axis=1)/2
+
+def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
+  return jnp.sum(r**2, axis=1) / 2
+
 
 def main(_):
 
@@ -103,22 +110,28 @@ def main(_):
 
   # boundary condition on density
   if FLAGS.dim == 1:
-  # 1D case
+    # 1D case
 
     # Gaussian source and target
     # source_prob = jax.vmap(distrax.Normal(loc=0, scale=1).prob)
     # target_prob = jax.vmap(distrax.Normal(loc=3, scale=1).prob)
 
     def source_prob_(r):
-      return distrax.Normal(loc=0, scale=1).prob(r) * .3 + distrax.Normal(loc=4, scale=1).prob(r) * .7
-    
+      return distrax.Normal(loc=0, scale=1).prob(r) * .3 + distrax.Normal(
+        loc=4, scale=1
+      ).prob(r) * .7
+
     source_prob = jax.vmap(source_prob_)
     target_prob = jax.vmap(distrax.Normal(loc=2, scale=1).prob)
 
-  elif FLAGS.dim == 2: 
-  # 2D case
-    source_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([-1,-1]), var=jnp.eye(2)))
-    target_prob = jax.vmap(partial(gaussian_2d, mean=jnp.array([3,3]), var=jnp.eye(2))) 
+  elif FLAGS.dim == 2:
+    # 2D case
+    source_prob = jax.vmap(
+      partial(gaussian_2d, mean=jnp.array([-1, -1]), var=jnp.eye(2))
+    )
+    target_prob = jax.vmap(
+      partial(gaussian_2d, mean=jnp.array([3, 3]), var=jnp.eye(2))
+    )
 
   @partial(jax.jit, static_argnames=['batch_size'])
   def w_loss_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
@@ -134,7 +147,9 @@ def main(_):
     rng for sampling from CNF in kl_loss and kinetic_loss. 
     """
 
-    def double_kl_loss_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
+    def double_kl_loss_fn(
+      params: hk.Params, rng: PRNGKey, batch_size: int
+    ) -> Array:
 
       prob_fn = source_prob
       loss = kl_loss_fn(params, rng, 0, batch_size)
@@ -142,7 +157,9 @@ def main(_):
       loss += kl_loss_fn(params, rng, 1, batch_size)
 
       @partial(jax.jit, static_argnames=['batch_size'])
-      def kl_loss_fn(params: hk.Params, rng: PRNGKey, cond, batch_size: int) -> Array:
+      def kl_loss_fn(
+        params: hk.Params, rng: PRNGKey, cond, batch_size: int
+      ) -> Array:
         """KL-divergence between the normalizing flow and the reference distribution.
         
         TODO: here, we assume the p.d.f. of the target distribution is known. 
@@ -150,7 +167,7 @@ def main(_):
         KL-divergence is not calculable and we need to shift to other integral 
         probability metric, e.g. MMD.
         """
-        
+
         breakpoint()
         fake_cond_ = np.ones((batch_size, 1)) * cond
         samples, log_prob = model.apply.sample_and_log_prob(
@@ -162,52 +179,75 @@ def main(_):
         return (log_prob - jnp.log(prob_fn(samples))).mean()
 
     @partial(jax.jit, static_argnames=['batch_size'])
-    def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
+    def kinetic_loss_fn(
+      t: float, params: hk.Params, rng: PRNGKey, batch_size: int
+    ) -> Array:
       """Kinetic energy along the trajectory at time t
       """
       fake_cond_ = np.ones((batch_size, 1)) * t
-      samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+      samples = sample_fn(
+        params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+      )
       xi = inverse_fn(params, samples, fake_cond_)
       velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
       # velocity.shape = [batch_size, 2, batch_size, 1]
       # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
       weight = .01
-      return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2) * weight * FLAGS.dim / 2
+      return jnp.mean(
+        velocity[jnp.arange(batch_size), :,
+                 jnp.arange(batch_size), 0]**2
+      ) * weight * FLAGS.dim / 2
 
     @partial(jax.jit, static_argnames=['batch_size'])
-    def acc_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
+    def acc_loss_fn(
+      t: float, params: hk.Params, rng: PRNGKey, batch_size: int
+    ) -> Array:
       """acceleration energy along the trajectory at time t, used for regularization
       """
       fake_cond_ = np.ones((batch_size, 1)) * t
-      samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+      samples = sample_fn(
+        params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+      )
       xi = inverse_fn(params, samples, fake_cond_)
       velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
       # velocity.shape = [batch_size, 2, batch_size, 1]
       # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
-      
+
       dt = 0.01
-      fake_cond_ = np.ones((batch_size, 1)) * (t+dt)
-      samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+      fake_cond_ = np.ones((batch_size, 1)) * (t + dt)
+      samples = sample_fn(
+        params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+      )
       xi = inverse_fn(params, samples, fake_cond_)
       velocity_ = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
       #weight = .01
-      return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0] - velocity_[jnp.arange(batch_size),:,jnp.arange(batch_size),0]) * FLAGS.dim / 2
-    
+      return jnp.mean(
+        velocity[jnp.arange(batch_size), :,
+                 jnp.arange(batch_size), 0] -
+        velocity_[jnp.arange(batch_size), :,
+                  jnp.arange(batch_size), 0]
+      ) * FLAGS.dim / 2
+
     loss = double_kl_loss_fn(params, rng, batch_size)
-    t_batch_size = 10 # 10
+    t_batch_size = 10  # 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     for _ in range(t_batch_size):
-      loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size + acc_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
+      loss += kinetic_loss_fn(t_batch[_], params, rng,
+                              batch_size // 32) / t_batch_size + acc_loss_fn(
+                                t_batch[_], params, rng, batch_size // 32
+                              ) / t_batch_size
 
     return loss
-  
+
   @partial(jax.jit, static_argnames=['batch_size'])
   def mfg_loss_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
     '''Loss of the mean-field potential game
     '''
-    
-    def potential_loss_fn(params: hk.Params, rng: PRNGKey, cond, potential_fn, batch_size: int) -> Array:
-      
+
+    def potential_loss_fn(
+      params: hk.Params, rng: PRNGKey, cond, potential_fn, batch_size: int
+    ) -> Array:
+
       fake_cond_ = np.ones((batch_size, 1)) * cond
       samples, _ = model.apply.sample_and_log_prob(
         params,
@@ -216,9 +256,11 @@ def main(_):
         sample_shape=(batch_size, ),
       )
       return potential_fn(samples).mean()
-    
-    def kl_loss_fn(params: hk.Params, rng: PRNGKey, cond, batch_size: int) -> Array:
-      
+
+    def kl_loss_fn(
+      params: hk.Params, rng: PRNGKey, cond, batch_size: int
+    ) -> Array:
+
       fake_cond_ = np.ones((batch_size, 1)) * cond
       samples, log_prob = model.apply.sample_and_log_prob(
         params,
@@ -246,18 +288,26 @@ def main(_):
   plt.subplot(121)
   if FLAGS.dim == 1:
     fake_cond = np.zeros((FLAGS.batch_size, 1))
-    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.hist(samples[...,0], bins=bins*4, density=True)
+    samples = sample_fn(
+      params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
+    )
+    plt.hist(samples[..., 0], bins=bins * 4, density=True)
     fake_cond = np.ones((FLAGS.batch_size, 1))
-    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.hist(samples[...,0], bins=bins*4, density=True)
+    samples = sample_fn(
+      params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
+    )
+    plt.hist(samples[..., 0], bins=bins * 4, density=True)
   elif FLAGS.dim == 2:
     fake_cond = np.zeros((FLAGS.batch_size, 1))
-    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.scatter(samples[...,0], samples[...,1], s=3, c='r')
+    samples = sample_fn(
+      params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
+    )
+    plt.scatter(samples[..., 0], samples[..., 1], s=3, c='r')
     fake_cond = np.ones((FLAGS.batch_size, 1))
-    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.scatter(samples[...,0], samples[...,1], s=1, c='b')
+    samples = sample_fn(
+      params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
+    )
+    plt.scatter(samples[..., 0], samples[..., 1], s=1, c='b')
   # training loop
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
@@ -279,60 +329,62 @@ def main(_):
   plt.subplot(122)
   if FLAGS.dim == 1:
     fake_cond = np.zeros((FLAGS.batch_size, 1))
-    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.hist(samples[...,0], bins=bins*4, density=True)
+    samples = sample_fn(
+      params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
+    )
+    plt.hist(samples[..., 0], bins=bins * 4, density=True)
     fake_cond = np.ones((FLAGS.batch_size, 1))
-    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.hist(samples[...,0], bins=bins*4, density=True)
-    print('kinetic energy: ', utils.calc_kinetic_energy(
-          sample_fn, 
-          forward_fn, 
-          inverse_fn, 
-          params, 
-          rng,
-          FLAGS.dim))
+    samples = sample_fn(
+      params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
+    )
+    plt.hist(samples[..., 0], bins=bins * 4, density=True)
+    print(
+      'kinetic energy: ',
+      utils.calc_kinetic_energy(
+        sample_fn, forward_fn, inverse_fn, params, rng, FLAGS.dim
+      )
+    )
     plt.savefig('results/fig/density_1d.pdf')
     plt.show()
 
     plot_1d_map = utils.plot_1d_map(
-      forward_fn=forward_fn,
-      params=params,
-      final_mean=3
+      forward_fn=forward_fn, params=params, final_mean=3
     )
     plot_1d_map
 
   elif FLAGS.dim == 2:
     fake_cond = np.zeros((FLAGS.batch_size, 1))
-    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.scatter(samples[...,0], samples[...,1], s=1, c='r')
+    samples = sample_fn(
+      params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
+    )
+    plt.scatter(samples[..., 0], samples[..., 1], s=1, c='r')
     fake_cond = np.ones((FLAGS.batch_size, 1))
-    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.scatter(samples[...,0], samples[...,1], s=1, c='b')
+    samples = sample_fn(
+      params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
+    )
+    plt.scatter(samples[..., 0], samples[..., 1], s=1, c='b')
     plt.savefig('results/fig/w1.pdf')
     plt.show()
 
     # plot the trajectory of the distribution and velocity field
     plot_traj_and_velocity = partial(
-      utils.plot_traj_and_velocity, 
-      sample_fn=sample_fn, 
-      forward_fn=forward_fn, 
-      inverse_fn=inverse_fn, 
-      params=params, 
-      rng=rng)
-    plot_traj_and_velocity(quiver_size=0.01)
-    print('kinetic energy: ', 
-      utils.calc_kinetic_energy(
-        sample_fn, 
-        forward_fn, 
-        inverse_fn, 
-        params, 
-        rng,
-        dim=FLAGS.dim)
+      utils.plot_traj_and_velocity,
+      sample_fn=sample_fn,
+      forward_fn=forward_fn,
+      inverse_fn=inverse_fn,
+      params=params,
+      rng=rng
     )
-    
-    print('kl loss: ',
-      kl_loss_fn(params, rng, FLAGS.batch_size))
-    
+    plot_traj_and_velocity(quiver_size=0.01)
+    print(
+      'kinetic energy: ',
+      utils.calc_kinetic_energy(
+        sample_fn, forward_fn, inverse_fn, params, rng, dim=FLAGS.dim
+      )
+    )
+
+    print('kl loss: ', kl_loss_fn(params, rng, FLAGS.batch_size))
+
 
 if __name__ == "__main__":
   app.run(main)

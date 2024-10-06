@@ -168,10 +168,7 @@ def make_flow_model(
     #   low=jnp.zeros(event_shape),
     #   high=jnp.ones(event_shape) * (2 * np.pi if periodized else 1.)
     # ),
-    distrax.Normal(
-      loc=jnp.zeros(event_shape),
-      scale=jnp.ones(event_shape)
-    ),
+    distrax.Normal(loc=jnp.zeros(event_shape), scale=jnp.ones(event_shape)),
     reinterpreted_batch_ndims=len(event_shape)
   )
 

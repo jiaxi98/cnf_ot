@@ -24,8 +24,10 @@ flags.DEFINE_integer(
 )
 flags.DEFINE_integer(
   "mlp_num_layers", 2, "Number of layers to use in the MLP conditioner."
-) # 2
-flags.DEFINE_integer("hidden_size", 16, "Hidden size of the MLP conditioner.") # 64
+)  # 2
+flags.DEFINE_integer(
+  "hidden_size", 16, "Hidden size of the MLP conditioner."
+)  # 64
 flags.DEFINE_integer(
   "num_bins", 5, "Number of bins to use in the rational-quadratic spline."
 )  # 20
@@ -37,8 +39,7 @@ flags.DEFINE_integer("eval_frequency", 1000, "How often to evaluate the model.")
 flags.DEFINE_integer("seed", 42, "random seed.")
 
 flags.DEFINE_enum(
-  "case", "density fit", ["density fit", "wasserstein", "mfg"],
-  "problem type"
+  "case", "density fit", ["density fit", "wasserstein", "mfg"], "problem type"
 )
 
 flags.DEFINE_boolean("use_64", True, "whether to use float64")
@@ -48,55 +49,65 @@ flags.DEFINE_integer("dim", 2, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
+
 def gaussian_2d(
-    r: jnp.ndarray,
-    mean: jnp.ndarray=jnp.array([2, 3]),
-    var: jnp.ndarray=jnp.array([[2, .5], [.5, 1]])
+  r: jnp.ndarray,
+  mean: jnp.ndarray = jnp.array([2, 3]),
+  var: jnp.ndarray = jnp.array([[2, .5], [.5, 1]])
 ) -> jnp.ndarray:
 
-    return jnp.exp(-0.5 * jnp.dot(jnp.dot((r - mean), jnp.linalg.inv(var)), (r - mean).T)) / jnp.sqrt(jnp.linalg.det(2 * jnp.pi * var))
+  return jnp.exp(
+    -0.5 * jnp.dot(jnp.dot((r - mean), jnp.linalg.inv(var)), (r - mean).T)
+  ) / jnp.sqrt(jnp.linalg.det(2 * jnp.pi * var))
 
 
-def prob_fn1_(
-    r: jnp.ndarray,
-) -> jnp.ndarray:
-    """t=0"""
+def prob_fn1_(r: jnp.ndarray, ) -> jnp.ndarray:
+  """t=0"""
 
-    R = 5
-    var = 1
-    rho1 = partial(gaussian_2d, mean=jnp.array([0,R]), var=jnp.eye(2)*var)
-    rho2 = partial(gaussian_2d, mean=jnp.array([R,0]), var=jnp.eye(2)*var)
-    rho3 = partial(gaussian_2d, mean=jnp.array([0,-R]), var=jnp.eye(2)*var)
-    rho4 = partial(gaussian_2d, mean=jnp.array([-R,0]), var=jnp.eye(2)*var)
-    return (rho1(r) + rho2(r) + rho3(r) + rho4(r))/4
+  R = 5
+  var = 1
+  rho1 = partial(gaussian_2d, mean=jnp.array([0, R]), var=jnp.eye(2) * var)
+  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0]), var=jnp.eye(2) * var)
+  rho3 = partial(gaussian_2d, mean=jnp.array([0, -R]), var=jnp.eye(2) * var)
+  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0]), var=jnp.eye(2) * var)
+  return (rho1(r) + rho2(r) + rho3(r) + rho4(r)) / 4
 
 
 def sample_fn1(
-  seed: PRNGKey, 
+  seed: PRNGKey,
   sample_shape,
 ):
   """t=0"""
-  
+
   dim = 2
   R = 5
-  component_indices = jax.random.choice(seed, a=4, shape=(sample_shape, ), p=jnp.ones(4)/4)
+  component_indices = jax.random.choice(
+    seed, a=4, shape=(sample_shape, ), p=jnp.ones(4) / 4
+  )
   sample_ = jnp.zeros((4, sample_shape, dim))
-  sample_ = sample_.at[0].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,R]))
-  sample_ = sample_.at[1].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R,0]))
-  sample_ = sample_.at[2].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,-R]))
-  sample_ = sample_.at[3].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R,0]))
+  sample_ = sample_.at[0].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, R])
+  )
+  sample_ = sample_.at[1].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0])
+  )
+  sample_ = sample_.at[2].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, -R])
+  )
+  sample_ = sample_.at[3].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0])
+  )
 
-  sample = sample_[component_indices[jnp.arange(sample_shape)], jnp.arange(sample_shape)]
+  sample = sample_[component_indices[jnp.arange(sample_shape)],
+                   jnp.arange(sample_shape)]
   return sample
 
 
-def prob_fn2_(
-    r: jnp.ndarray,
-) -> jnp.ndarray:
-    """t=1"""
+def prob_fn2_(r: jnp.ndarray, ) -> jnp.ndarray:
+  """t=1"""
 
-    rho1 = partial(gaussian_2d, mean=jnp.array([0,0]), var=jnp.eye(2))
-    return rho1(r)
+  rho1 = partial(gaussian_2d, mean=jnp.array([0, 0]), var=jnp.eye(2))
+  return rho1(r)
 
 
 def sample_fn2(
@@ -104,18 +115,16 @@ def sample_fn2(
   sample_shape,
 ):
   """t=1"""
-  
+
   dim = 2
   return jax.random.normal(seed, shape=(sample_shape, dim))
 
 
-def prob_fn2__(
-    r: jnp.ndarray,
-) -> jnp.ndarray:
-    """t=1"""
+def prob_fn2__(r: jnp.ndarray, ) -> jnp.ndarray:
+  """t=1"""
 
-    rho1 = partial(gaussian_2d, mean=jnp.array([-3,-3]), var=jnp.eye(2))
-    return rho1(r)
+  rho1 = partial(gaussian_2d, mean=jnp.array([-3, -3]), var=jnp.eye(2))
+  return rho1(r)
 
 
 def sample_fn2_(
@@ -123,23 +132,23 @@ def sample_fn2_(
   sample_shape,
 ):
   """t=1"""
-  
+
   dim = 2
-  return jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-3,-3]).reshape((1, dim))
+  return jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array(
+    [-3, -3]
+  ).reshape((1, dim))
 
 
-def prob_fn3_(
-    r: jnp.ndarray,
-) -> jnp.ndarray:
-    """t=0.5"""
+def prob_fn3_(r: jnp.ndarray, ) -> jnp.ndarray:
+  """t=0.5"""
 
-    R = 2.5
-    var = 1
-    rho1 = partial(gaussian_2d, mean=jnp.array([0,R]), var=jnp.eye(2)*var)
-    rho2 = partial(gaussian_2d, mean=jnp.array([R,0]), var=jnp.eye(2)*var)
-    rho3 = partial(gaussian_2d, mean=jnp.array([0,-R]), var=jnp.eye(2)*var)
-    rho4 = partial(gaussian_2d, mean=jnp.array([-R,0]), var=jnp.eye(2)*var)
-    return (rho1(r) + rho2(r) + rho3(r) + rho4(r))/4
+  R = 2.5
+  var = 1
+  rho1 = partial(gaussian_2d, mean=jnp.array([0, R]), var=jnp.eye(2) * var)
+  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0]), var=jnp.eye(2) * var)
+  rho3 = partial(gaussian_2d, mean=jnp.array([0, -R]), var=jnp.eye(2) * var)
+  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0]), var=jnp.eye(2) * var)
+  return (rho1(r) + rho2(r) + rho3(r) + rho4(r)) / 4
 
 
 def sample_fn3(
@@ -147,32 +156,41 @@ def sample_fn3(
   sample_shape,
 ):
   """t=0.5"""
-  
+
   dim = 2
   R = 2.5
-  component_indices = jax.random.choice(seed, a=4, shape=(sample_shape, ), p=jnp.ones(4)/4)
+  component_indices = jax.random.choice(
+    seed, a=4, shape=(sample_shape, ), p=jnp.ones(4) / 4
+  )
   sample_ = jnp.zeros((4, sample_shape, dim))
-  sample_ = sample_.at[0].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,R]))
-  sample_ = sample_.at[1].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R,0]))
-  sample_ = sample_.at[2].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,-R]))
-  sample_ = sample_.at[3].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R,0]))
+  sample_ = sample_.at[0].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, R])
+  )
+  sample_ = sample_.at[1].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0])
+  )
+  sample_ = sample_.at[2].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, -R])
+  )
+  sample_ = sample_.at[3].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0])
+  )
 
-  sample = sample_[component_indices[jnp.arange(sample_shape)], jnp.arange(sample_shape)]
+  sample = sample_[component_indices[jnp.arange(sample_shape)],
+                   jnp.arange(sample_shape)]
   return sample
 
 
-def prob_fn4_(
-    r: jnp.ndarray,
-) -> jnp.ndarray:
-    """t=0.25"""
+def prob_fn4_(r: jnp.ndarray, ) -> jnp.ndarray:
+  """t=0.25"""
 
-    R = 3.75
-    var = 1
-    rho1 = partial(gaussian_2d, mean=jnp.array([0,R]), var=jnp.eye(2)*var)
-    rho2 = partial(gaussian_2d, mean=jnp.array([R,0]), var=jnp.eye(2)*var)
-    rho3 = partial(gaussian_2d, mean=jnp.array([0,-R]), var=jnp.eye(2)*var)
-    rho4 = partial(gaussian_2d, mean=jnp.array([-R,0]), var=jnp.eye(2)*var)
-    return (rho1(r) + rho2(r) + rho3(r) + rho4(r))/4
+  R = 3.75
+  var = 1
+  rho1 = partial(gaussian_2d, mean=jnp.array([0, R]), var=jnp.eye(2) * var)
+  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0]), var=jnp.eye(2) * var)
+  rho3 = partial(gaussian_2d, mean=jnp.array([0, -R]), var=jnp.eye(2) * var)
+  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0]), var=jnp.eye(2) * var)
+  return (rho1(r) + rho2(r) + rho3(r) + rho4(r)) / 4
 
 
 def sample_fn4(
@@ -180,32 +198,41 @@ def sample_fn4(
   sample_shape,
 ):
   """t=0.25"""
-  
+
   dim = 2
   R = 3.75
-  component_indices = jax.random.choice(seed, a=4, shape=(sample_shape, ), p=jnp.ones(4)/4)
+  component_indices = jax.random.choice(
+    seed, a=4, shape=(sample_shape, ), p=jnp.ones(4) / 4
+  )
   sample_ = jnp.zeros((4, sample_shape, dim))
-  sample_ = sample_.at[0].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,R]))
-  sample_ = sample_.at[1].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R,0]))
-  sample_ = sample_.at[2].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,-R]))
-  sample_ = sample_.at[3].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R,0]))
+  sample_ = sample_.at[0].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, R])
+  )
+  sample_ = sample_.at[1].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0])
+  )
+  sample_ = sample_.at[2].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, -R])
+  )
+  sample_ = sample_.at[3].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0])
+  )
 
-  sample = sample_[component_indices[jnp.arange(sample_shape)], jnp.arange(sample_shape)]
+  sample = sample_[component_indices[jnp.arange(sample_shape)],
+                   jnp.arange(sample_shape)]
   return sample
 
 
-def prob_fn5_(
-    r: jnp.ndarray,
-) -> jnp.ndarray:
-    """t=0.75"""
+def prob_fn5_(r: jnp.ndarray, ) -> jnp.ndarray:
+  """t=0.75"""
 
-    R = 1.25
-    var = 1
-    rho1 = partial(gaussian_2d, mean=jnp.array([0,R]), var=jnp.eye(2)*var)
-    rho2 = partial(gaussian_2d, mean=jnp.array([R,0]), var=jnp.eye(2)*var)
-    rho3 = partial(gaussian_2d, mean=jnp.array([0,-R]), var=jnp.eye(2)*var)
-    rho4 = partial(gaussian_2d, mean=jnp.array([-R,0]), var=jnp.eye(2)*var)
-    return (rho1(r) + rho2(r) + rho3(r) + rho4(r))/4
+  R = 1.25
+  var = 1
+  rho1 = partial(gaussian_2d, mean=jnp.array([0, R]), var=jnp.eye(2) * var)
+  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0]), var=jnp.eye(2) * var)
+  rho3 = partial(gaussian_2d, mean=jnp.array([0, -R]), var=jnp.eye(2) * var)
+  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0]), var=jnp.eye(2) * var)
+  return (rho1(r) + rho2(r) + rho3(r) + rho4(r)) / 4
 
 
 def sample_fn5(
@@ -213,24 +240,34 @@ def sample_fn5(
   sample_shape,
 ):
   """t=0.75"""
-  
+
   dim = 2
   R = 1.25
-  component_indices = jax.random.choice(seed, a=4, shape=(sample_shape, ), p=jnp.ones(4)/4)
+  component_indices = jax.random.choice(
+    seed, a=4, shape=(sample_shape, ), p=jnp.ones(4) / 4
+  )
   sample_ = jnp.zeros((4, sample_shape, dim))
-  sample_ = sample_.at[0].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,R]))
-  sample_ = sample_.at[1].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R,0]))
-  sample_ = sample_.at[2].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0,-R]))
-  sample_ = sample_.at[3].set(jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R,0]))
+  sample_ = sample_.at[0].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, R])
+  )
+  sample_ = sample_.at[1].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0])
+  )
+  sample_ = sample_.at[2].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0, -R])
+  )
+  sample_ = sample_.at[3].set(
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0])
+  )
 
-  sample = sample_[component_indices[jnp.arange(sample_shape)], jnp.arange(sample_shape)]
+  sample = sample_[component_indices[jnp.arange(sample_shape)],
+                   jnp.arange(sample_shape)]
   return sample
 
 
-def potential_fn(
-    r: jnp.ndarray,
-) -> jnp.ndarray:
-  return jnp.sum(r**2, axis=1)/2
+def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
+  return jnp.sum(r**2, axis=1) / 2
+
 
 def main(_):
 
@@ -253,7 +290,7 @@ def main(_):
   sample_fn = jax.jit(model.apply.sample, static_argnames=["sample_shape"])
   log_prob_fn = jax.jit(model.apply.log_prob)
   key, rng = jax.random.split(rng)
-  params = model.init(key, np.zeros((1, FLAGS.dim)), np.zeros((1,)))
+  params = model.init(key, np.zeros((1, FLAGS.dim)), np.zeros((1, )))
   print(params.keys())
 
   opt_state = optimizer.init(params)
@@ -261,9 +298,9 @@ def main(_):
 
   # boundary condition on density
   if FLAGS.dim == 1:
-    return 
-  
-  elif FLAGS.dim == 2: 
+    return
+
+  elif FLAGS.dim == 2:
     # prob_fn1 = jax.vmap(prob_fn1_)
     prob_fn1 = jax.vmap(prob_fn1_)
     prob_fn2 = jax.vmap(prob_fn2_)
@@ -273,7 +310,9 @@ def main(_):
 
   # definition of loss functions
   @partial(jax.jit, static_argnames=["batch_size"])
-  def kl_loss_fn(params: hk.Params, rng: PRNGKey, cond, batch_size: int) -> Array:
+  def kl_loss_fn(
+    params: hk.Params, rng: PRNGKey, cond, batch_size: int
+  ) -> Array:
     """KL-divergence between the normalizing flow and the reference distribution.
     
     TODO: here, we assume the p.d.f. of the target distribution is known. 
@@ -281,27 +320,34 @@ def main(_):
     KL-divergence is not calculable and we need to shift to other integral 
     probability metric, e.g. MMD.
     """
-    
+
     fake_cond_ = np.ones((batch_size, 1)) * cond
     samples, log_prob = model.apply.sample_and_log_prob(
-        params,
-        cond=fake_cond_,
-        seed=rng,
-        sample_shape=(batch_size, ),
+      params,
+      cond=fake_cond_,
+      seed=rng,
+      sample_shape=(batch_size, ),
     )
-    return (log_prob - jnp.log(prob_fn1(samples)*(1-cond)*(0.5-cond)*(0.75-cond)*(0.25-cond)*32/3
-                                + prob_fn2(samples)*cond*(cond-0.5)*(cond-0.75)*(cond-0.25)*32/3
-                                + prob_fn3(samples)*cond*(1-cond)*(0.75-cond)*(cond-0.25)*64
-                                + prob_fn4(samples)*cond*(1-cond)*(0.75-cond)*(0.5-cond)*128/3
-                                + prob_fn5(samples)*cond*(1-cond)*(cond-0.25)*(cond-0.5)*128/3
-                                )).mean()
-  
+    return (
+      log_prob - jnp.log(
+        prob_fn1(samples) * (1 - cond) * (0.5 - cond) * (0.75 - cond) *
+        (0.25 - cond) * 32 / 3 + prob_fn2(samples) * cond * (cond - 0.5) *
+        (cond - 0.75) * (cond - 0.25) * 32 / 3 + prob_fn3(samples) * cond *
+        (1 - cond) * (0.75 - cond) *
+        (cond - 0.25) * 64 + prob_fn4(samples) * cond * (1 - cond) *
+        (0.75 - cond) * (0.5 - cond) * 128 / 3 + prob_fn5(samples) * cond *
+        (1 - cond) * (cond - 0.25) * (cond - 0.5) * 128 / 3
+      )
+    ).mean()
+
   @partial(jax.jit, static_argnames=["batch_size"])
-  def reverse_kl_loss_fn(params: hk.Params, rng: PRNGKey, cond, batch_size: int) -> Array:
+  def reverse_kl_loss_fn(
+    params: hk.Params, rng: PRNGKey, cond, batch_size: int
+  ) -> Array:
     """reverse KL-divergence between the normalizing flow and the reference distribution.
     
     """
-    
+
     samples1 = sample_fn1(seed=rng, sample_shape=batch_size)
     samples2 = sample_fn2(seed=rng, sample_shape=batch_size)
     samples3 = sample_fn3(seed=rng, sample_shape=batch_size)
@@ -313,15 +359,13 @@ def main(_):
       + samples4*cond*(1-cond)*(0.75-cond)*(0.5-cond)*128/3 \
       + samples5*cond*(1-cond)*(cond-0.25)*(cond-0.5)*128/3
     fake_cond_ = np.ones((1, )) * cond
-    log_prob = model.apply.log_prob(
-        params,
-        samples,
-        cond=fake_cond_
-    )
+    log_prob = model.apply.log_prob(params, samples, cond=fake_cond_)
     return -log_prob.mean()
 
   @partial(jax.jit, static_argnames=["batch_size"])
-  def mse_loss_fn(params: hk.Params, rng: PRNGKey, cond, batch_size: int) -> Array:
+  def mse_loss_fn(
+    params: hk.Params, rng: PRNGKey, cond, batch_size: int
+  ) -> Array:
     """KL-divergence between the normalizing flow and the reference distribution.
     
     TODO: here, we assume the p.d.f. of the target distribution is known. 
@@ -329,29 +373,39 @@ def main(_):
     KL-divergence is not calculable and we need to shift to other integral 
     probability metric, e.g. MMD.
     """
-    
+
     fake_cond_ = jnp.ones((batch_size, 1)) * cond
     samples, log_prob = model.apply.sample_and_log_prob(
-        params,
-        cond=fake_cond_,
-        seed=rng,
-        sample_shape=(batch_size, ),
+      params,
+      cond=fake_cond_,
+      seed=rng,
+      sample_shape=(batch_size, ),
     )
-    return ((jnp.exp(log_prob) - (prob_fn1(samples)*(1-cond)*(0.5-cond)*(0.75-cond)*(0.25-cond)*32/3
-                                + prob_fn2(samples)*cond*(cond-0.5)*(cond-0.75)*(cond-0.25)*32/3
-                                + prob_fn3(samples)*cond*(1-cond)*(0.75-cond)*(cond-0.25)*64
-                                + prob_fn4(samples)*cond*(1-cond)*(0.75-cond)*(0.5-cond)*128/3
-                                + prob_fn5(samples)*cond*(1-cond)*(cond-0.25)*(cond-0.5)*128/3))**2).mean()
-  
+    return (
+      (
+        jnp.exp(log_prob) - (
+          prob_fn1(samples) * (1 - cond) * (0.5 - cond) * (0.75 - cond) *
+          (0.25 - cond) * 32 / 3 + prob_fn2(samples) * cond * (cond - 0.5) *
+          (cond - 0.75) * (cond - 0.25) * 32 / 3 + prob_fn3(samples) * cond *
+          (1 - cond) * (0.75 - cond) *
+          (cond - 0.25) * 64 + prob_fn4(samples) * cond * (1 - cond) *
+          (0.75 - cond) * (0.5 - cond) * 128 / 3 + prob_fn5(samples) * cond *
+          (1 - cond) * (cond - 0.25) * (cond - 0.5) * 128 / 3
+        )
+      )**2
+    ).mean()
+
   # # density fitting using the KL divergence, the exact form of the distribution is available
   # @partial(jax.jit, static_argnames=["batch_size"])
   # def density_fit_loss_fn(params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int) -> Array:
 
   #   return kl_loss_fn(params, rng, 0, batch_size) + kl_loss_fn(params, rng, 1, batch_size)
-  
+
   # density fitting using the reverse KL divergence, the samples from the target distribution is available
   @partial(jax.jit, static_argnames=["batch_size"])
-  def density_fit_loss_fn(params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int) -> Array:
+  def density_fit_loss_fn(
+    params: hk.Params, rng: PRNGKey, lambda_: float, batch_size: int
+  ) -> Array:
 
     return reverse_kl_loss_fn(params, rng, 0, batch_size) \
       + reverse_kl_loss_fn(params, rng, 1, batch_size) \
@@ -363,7 +417,8 @@ def main(_):
   def update(params: hk.Params, rng: PRNGKey, lambda_,
              opt_state: OptState) -> Tuple[Array, hk.Params, OptState]:
     """Single SGD update step."""
-    loss, grads = jax.value_and_grad(density_fit_loss_fn)(params, rng, lambda_, FLAGS.batch_size)
+    loss, grads = jax.value_and_grad(density_fit_loss_fn
+                                     )(params, rng, lambda_, FLAGS.batch_size)
     updates, new_opt_state = optimizer.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return loss, new_params, new_opt_state
@@ -432,49 +487,58 @@ def main(_):
         desc_str += f"{KL=:.4f} | {kin=:.1f} | {lambda_=:.1f}"
       elif FLAGS.case == "mfg":
         return
-      
+
       iters.set_description_str(desc_str)
 
   # plot the distribution at t=0, 1 after training
-  plt.figure(figsize=(6,2))
+  plt.figure(figsize=(6, 2))
   plt.subplot(131)
   if FLAGS.dim == 1:
     fake_cond = np.zeros((FLAGS.batch_size, 1))
-    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.hist(samples[...,0], bins=bins*4, density=True)
+    samples = sample_fn(
+      params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
+    )
+    plt.hist(samples[..., 0], bins=bins * 4, density=True)
     fake_cond = np.ones((FLAGS.batch_size, 1))
-    samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-    plt.hist(samples[...,0], bins=bins*4, density=True)
-    print("kinetic energy: ", utils.calc_kinetic_energy(
-          sample_fn, 
-          forward_fn, 
-          inverse_fn, 
-          params, 
-          rng,
-          FLAGS.dim))
+    samples = sample_fn(
+      params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
+    )
+    plt.hist(samples[..., 0], bins=bins * 4, density=True)
+    print(
+      "kinetic energy: ",
+      utils.calc_kinetic_energy(
+        sample_fn, forward_fn, inverse_fn, params, rng, FLAGS.dim
+      )
+    )
     plt.savefig("results/fig/density_1d.pdf")
     plt.show()
 
     plot_1d_map = utils.plot_1d_map(
-      forward_fn=forward_fn,
-      params=params,
-      final_mean=3
+      forward_fn=forward_fn, params=params, final_mean=3
     )
     plot_1d_map
 
   elif FLAGS.dim == 2 and FLAGS.case == "density fit":
-    
+
     plt.clf()
-    plt.figure(figsize=(10,2))
+    plt.figure(figsize=(10, 2))
     t_array = jnp.linspace(0, 1, 5)
     cmap = plt.cm.Reds
     norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
 
     for i in range(5):
-      plt.subplot(1,5,i+1)
+      plt.subplot(1, 5, i + 1)
       fake_cond = np.ones((FLAGS.batch_size, 1)) * t_array[i]
-      samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-      plt.scatter(samples[...,0], samples[...,1], s=1, label=str(t_array[i]), color=cmap(norm(t_array[i])))
+      samples = sample_fn(
+        params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
+      )
+      plt.scatter(
+        samples[..., 0],
+        samples[..., 1],
+        s=1,
+        label=str(t_array[i]),
+        color=cmap(norm(t_array[i]))
+      )
       plt.legend()
 
     plt.savefig("results/fig/density_fit.pdf")
@@ -484,7 +548,7 @@ def main(_):
     # utils.plot_distribution_trajectory(
     #     sample_fn,
     #     forward_fn,
-    #     params, 
+    #     params,
     #     key,
     #     FLAGS.batch_size,
     #     mu1,
@@ -499,46 +563,50 @@ def main(_):
     # as well as the error of the learned mapping at t=0, 1
     # based on grid evaluation
     utils.plot_distribution_trajectory(
-        sample_fn,
-        forward_fn,
-        params, 
-        key,
-        FLAGS.batch_size,
-        mu1,
-        mu2,
-        var1,
-        var2,
-        fig_name=FLAGS.case+"_dist_traj"
+      sample_fn,
+      forward_fn,
+      params,
+      key,
+      FLAGS.batch_size,
+      mu1,
+      mu2,
+      var1,
+      var2,
+      fig_name=FLAGS.case + "_dist_traj"
     )
 
     # # plot the trajectory of the distribution and velocity field
     plot_traj_and_velocity = partial(
-      utils.plot_traj_and_velocity, 
-      sample_fn=sample_fn, 
-      forward_fn=forward_fn, 
-      inverse_fn=inverse_fn, 
-      params=params, 
-      rng=rng)
+      utils.plot_traj_and_velocity,
+      sample_fn=sample_fn,
+      forward_fn=forward_fn,
+      inverse_fn=inverse_fn,
+      params=params,
+      rng=rng
+    )
     plot_traj_and_velocity(quiver_size=0.01)
     plt.clf()
-    plt.plot(jnp.linspace(5001,FLAGS.epochs,FLAGS.epochs-5000), jnp.array(loss_hist[5000:]))
+    plt.plot(
+      jnp.linspace(5001, FLAGS.epochs, FLAGS.epochs - 5000),
+      jnp.array(loss_hist[5000:])
+    )
     plt.savefig("results/fig/loss_hist.pdf")
 
     param_count = sum(x.size for x in jax.tree.leaves(params))
     print("Network parameters: {}".format(param_count))
-    # print("kinetic energy: ", 
+    # print("kinetic energy: ",
     #   utils.calc_kinetic_energy(
-    #     sample_fn, 
-    #     forward_fn, 
-    #     inverse_fn, 
-    #     params, 
+    #     sample_fn,
+    #     forward_fn,
+    #     inverse_fn,
+    #     params,
     #     rng,
     #     dim=FLAGS.dim)
     # )
-    
+
     # print("kl loss: ",
     #   kl_loss_fn(params, rng, cond=0, FLAGS.batch_size))
-    
+
   # plot the 1D mfg example：
   # plot the histogram w.r.t. the ground truth solution
   # plot the velocity at several time step v.s. the ground truth
@@ -601,6 +669,7 @@ def main(_):
   #   for _ in range(t_batch_size):
   #       loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
   #   print("loss: {:.4f}".format(loss))
+
 
 if __name__ == "__main__":
   app.run(main)

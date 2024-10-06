@@ -46,6 +46,7 @@ flags.DEFINE_integer("dim", 2, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
+
 def kl_ess(log_model_prob, target_prob):
   """metrics used in the tori paper."""
   weights = target_prob / jnp.exp(log_model_prob)
@@ -54,14 +55,16 @@ def kl_ess(log_model_prob, target_prob):
   ESS = jnp.sum(weights)**2 / jnp.sum(weights**2)
   return Z, KL, ESS
 
-def gaussian_2d(
-    r: jnp.ndarray
-) -> jnp.ndarray:
 
-    #mean = jnp.reshape(jnp.array([2, 3]), (1,2))
-    mean = jnp.array([2, 3])
-    var = jnp.array([[2, .5], [.5, 1]])
-    return jnp.exp(-0.5 * jnp.dot(jnp.dot((r - mean), jnp.linalg.inv(var)), (r - mean).T)) / jnp.sqrt(jnp.linalg.det(2 * jnp.pi * var))
+def gaussian_2d(r: jnp.ndarray) -> jnp.ndarray:
+
+  #mean = jnp.reshape(jnp.array([2, 3]), (1,2))
+  mean = jnp.array([2, 3])
+  var = jnp.array([[2, .5], [.5, 1]])
+  return jnp.exp(
+    -0.5 * jnp.dot(jnp.dot((r - mean), jnp.linalg.inv(var)), (r - mean).T)
+  ) / jnp.sqrt(jnp.linalg.det(2 * jnp.pi * var))
+
 
 def main(_):
   jax.config.update("jax_enable_x64", FLAGS.use_64)
@@ -78,7 +81,6 @@ def main(_):
   )
   model = hk.without_apply_rng(hk.multi_transform(model))
 
-  
   #target_pdf = distrax.Uniform(low=5, high=8).prob            # 1D uniform, not a good target as the support is not the whole axis
   #target_pdf = distrax.Normal(loc=3, scale=2).prob             # 1D Gaussian
   #target_pdf = distrax.Normal(loc=jnp.array([1, 2]), scale=jnp.array([[2,.5]])).prob        # 2D Gaussian
@@ -107,11 +109,11 @@ def main(_):
 
   @partial(jax.jit, static_argnames=['batch_size'])
   def eval_fn(params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
-     fake_cond_ = np.zeros((batch_size, 1))
+    fake_cond_ = np.zeros((batch_size, 1))
     samples, log_prob = model.apply.sample_and_log_prob(
       params, cond=fake_cond_, seed=rng, sample_shape=(batch_size, )
     )
-    
+
     return kl_ess(log_prob, target_prob(samples))
     # 2D distrax.Normal samples
     #return kl_ess(log_prob, jnp.prod(target_prob(samples), axis=(1,2)))
@@ -132,21 +134,23 @@ def main(_):
   opt_state = optimizer.init(params)
 
   fake_cond = np.zeros((FLAGS.batch_size, 1))
-  samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
-#   print("inverse jacobian", model.apply.inverse_jac(params, r, fake_cond))
-#   xi = inverse_fn(params, r, fake_cond)
-#   jac_fwd = model.apply.forward_jac(params, xi, fake_cond)
-#   print("inverse jacobian from forward", jnp.linalg.inv(jac_fwd))
+  samples = sample_fn(
+    params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
+  )
+  #   print("inverse jacobian", model.apply.inverse_jac(params, r, fake_cond))
+  #   xi = inverse_fn(params, r, fake_cond)
+  #   jac_fwd = model.apply.forward_jac(params, xi, fake_cond)
+  #   print("inverse jacobian from forward", jnp.linalg.inv(jac_fwd))
 
-#   def log_prob_fn(params, r):
-#     fake_cond = jnp.zeros((r.shape[0], 1))
-#     return model.apply.log_prob(params, r, fake_cond)
+  #   def log_prob_fn(params, r):
+  #     fake_cond = jnp.zeros((r.shape[0], 1))
+  #     return model.apply.log_prob(params, r, fake_cond)
   plt.subplot(121)
   if FLAGS.dim == 1:
     bins = 5
-    plt.hist(samples[...,0], bins=bins*4, density=True)
+    plt.hist(samples[..., 0], bins=bins * 4, density=True)
   elif FLAGS.dim == 2:
-    plt.scatter(samples[...,0], samples[...,1], s=1)
+    plt.scatter(samples[..., 0], samples[..., 1], s=1)
 
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
@@ -167,20 +171,23 @@ def main(_):
       iters.set_description_str(desc_str)
 
   plt.subplot(122)
-  samples = sample_fn(params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond)
+  samples = sample_fn(
+    params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
+  )
   if FLAGS.dim == 1:
     bins = 5
-    plt.hist(samples[...,0], bins=bins*4, density=True)
-    print('min of samples', jnp.min(samples[...,0]))
-    print('max of samples', jnp.max(samples[...,0]))
-    x = jnp.linspace(jnp.min(samples[...,0]), jnp.max(samples[...,0]), 1000)
+    plt.hist(samples[..., 0], bins=bins * 4, density=True)
+    print('min of samples', jnp.min(samples[..., 0]))
+    print('max of samples', jnp.max(samples[..., 0]))
+    x = jnp.linspace(jnp.min(samples[..., 0]), jnp.max(samples[..., 0]), 1000)
     pdf = target_pdf(x)
     plt.plot(x, pdf, label='ground_truth')
     plt.legend()
   elif FLAGS.dim == 2:
-    plt.scatter(samples[...,0], samples[...,1], s=1)
+    plt.scatter(samples[..., 0], samples[..., 1], s=1)
   plt.savefig("results/fig/Gaussian2D.pdf")
   plt.show()
+
 
 if __name__ == "__main__":
   app.run(main)
