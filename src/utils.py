@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import matplotlib.colors as mcolors
 import numpy as np
 import haiku as hk
+from matplotlib import cm
 from matplotlib import pyplot as plt
 
 from src.types import Batch, OptState, PRNGKey
@@ -101,11 +102,11 @@ def plot_samples_snapshot(
   params: hk.Params,
   key: PRNGKey,
   batch_size,
+  t_array: jnp.array,
 ):
 
   plt.clf()
   plt.figure(figsize=(10, 2))
-  t_array = jnp.linspace(0, 1, 5)
   cmap = plt.cm.Reds
   norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
 
@@ -131,11 +132,11 @@ def plot_samples_snapshot(
 def plot_density_snapshot(
   log_prob_fn: callable,
   params: hk.Params,
+  t_array = jnp.linspace(0, 1, 5),
 ):
 
   plt.clf()
   plt.figure(figsize=(10, 2))
-  t_array = jnp.linspace(0, 1, 5)
   cmap = plt.cm.Reds
   norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
 
@@ -162,6 +163,7 @@ def plot_trajectory(
   log_prob_fn: callable,
   params: hk.Params,
   r_: jnp.array,
+  t_array: jnp.array,
 ):
   
   plt.clf()
@@ -173,14 +175,13 @@ def plot_trajectory(
   XY = jnp.hstack([X.reshape(100**2, 1), Y.reshape(100**2, 1)])
   fake_cond_ = np.zeros((1, ))
   log_prob = log_prob_fn(params, XY, cond=fake_cond_)
-  plt.imshow(jnp.exp(log_prob.reshape(100, 100)))
+  plt.imshow(jnp.exp(log_prob.reshape(100, 100)), cmap=cm.viridis)
   
   xi = inverse_fn(params, r_, jnp.zeros(1))
-  t_array = jnp.linspace(0,1,20)
   colors = ["red", "green", "blue", "yellow"]
   for t in t_array:
     r_ = forward_fn(params, xi, jnp.ones(1) * t)
-    plt.scatter((r_[:, 0]+8)/16*100, (r_[:, 1]+8)/16*100, c="red", s=3)
+    plt.scatter((r_[:, 0]+8)/16*100, (r_[:, 1]+8)/16*100, c="red", s=5)
   plt.savefig("results/fig/traj.pdf")
 
 
@@ -190,10 +191,10 @@ def plot_traj_and_velocity(
   inverse_fn,
   params: hk.Params,
   rng: PRNGKey,
+  t_array: jnp.array,
   quiver_size: float = .1
 ):
 
-  t_array = [0.1, 0.2, 0.4, 0.6, 0.8, 0.9]
   batch_size_pdf = 1024
   batch_size_velocity = 64
   fig1 = plt.figure(figsize=(10, 10))

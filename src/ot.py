@@ -39,7 +39,7 @@ flags.DEFINE_integer("eval_frequency", 100, "How often to evaluate the model.")
 flags.DEFINE_integer("seed", 42, "random seed.")
 
 flags.DEFINE_enum(
-  "case", "mfg", ["density fit", "wasserstein", "mfg"], "problem type"
+  "case", "wasserstein", ["density fit", "wasserstein", "mfg"], "problem type"
 )
 
 flags.DEFINE_boolean("use_64", True, "whether to use float64")
@@ -49,7 +49,6 @@ flags.DEFINE_integer("dim", 2, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
-T = 2
 
 def gaussian_2d(
   r: jnp.ndarray,
@@ -219,7 +218,7 @@ def main(_):
     )
     return (
       log_prob -
-      jnp.log(source_prob(samples) * (T - cond)/T + target_prob(samples) * cond/T)
+      jnp.log(source_prob(samples) * (1 - cond) + target_prob(samples) * cond)
     ).mean()
 
   @partial(jax.jit, static_argnames=["batch_size"])
@@ -233,7 +232,7 @@ def main(_):
 
     samples1 = sample_source_fn(seed=rng, sample_shape=batch_size)
     samples2 = sample_target_fn(seed=rng, sample_shape=batch_size)
-    samples = samples1 * (T - cond)/T + samples2 * cond/T
+    samples = samples1 * (1 - cond) + samples2 * cond
     fake_cond_ = np.ones((1, )) * cond
     log_prob = model.apply.log_prob(params, samples, cond=fake_cond_)
     return -log_prob.mean()
@@ -260,7 +259,7 @@ def main(_):
     return (
       (
         jnp.exp(log_prob) -
-        (source_prob(samples) * (T - cond)/T + target_prob(samples) * cond/T)
+        (source_prob(samples) * (1 - cond) + target_prob(samples) * cond)
       )**2
     ).mean()
 
@@ -345,10 +344,11 @@ def main(_):
     # velocity += jax.jacfwd(partial(log_prob_fn, params, cond=jnp.ones(1) * t))(
     #   r3)[jnp.arange(batch_size),jnp.arange(batch_size)]/beta
     # finite difference approximation of the score function
-    score = jnp.zeros((batch_size, FLAGS.dim))
+    dim = FLAGS.dim
+    score = jnp.zeros((batch_size, dim))
     dx = 0.01
-    for i in range(FLAGS.dim):
-      dr = jnp.zeros((1, FLAGS.dim))
+    for i in range(dim):
+      dr = jnp.zeros((1, dim))
       dr = dr.at[i].set(dx/2)
       log_p1 = log_prob_fn(params, r3 + dr, cond=jnp.ones(1) * t)
       log_p2 = log_prob_fn(params, r3 - dr, cond=jnp.ones(1) * t)
@@ -363,7 +363,7 @@ def main(_):
   ) -> Array:
 
     return kl_loss_fn(params, rng, 0,
-                      batch_size) + kl_loss_fn(params, rng, T, batch_size)
+                      batch_size) + kl_loss_fn(params, rng, 1, batch_size)
 
   @partial(jax.jit, static_argnames=["batch_size"])
   def density_fit_rkl_loss_fn(
@@ -371,7 +371,7 @@ def main(_):
   ) -> Array:
 
     return reverse_kl_loss_fn(params, rng, 0, batch_size) + reverse_kl_loss_fn(
-      params, rng, T, batch_size
+      params, rng, 1, batch_size
     )
 
   @partial(jax.jit, static_argnames=["batch_size"])
@@ -441,12 +441,11 @@ def main(_):
     """
 
     loss = lambda_ * reverse_kl_loss_fn(params, rng, 0, batch_size) \
-      + potential_loss_fn(params, rng, T, batch_size)
+      + potential_loss_fn(params, rng, 1, batch_size)
     t_batch_size = 20  # 10
-    t_batch = jax.random.uniform(rng, (t_batch_size, )) * T
-    print(t_batch.shape)
+    t_batch = jax.random.uniform(rng, (t_batch_size, ))
     for t in t_batch:
-      loss += kinetic_with_score_loss_fn(
+      loss += kinetic_loss_fn(
         t, params, rng, batch_size // 32
       ) / t_batch_size
 
@@ -456,7 +455,7 @@ def main(_):
   def update(params: hk.Params, rng: PRNGKey, lambda_,
              opt_state: OptState) -> Tuple[Array, hk.Params, OptState]:
     """Single SGD update step."""
-    loss, grads = jax.value_and_grad(mfg_loss_fn
+    loss, grads = jax.value_and_grad(wasserstein_loss_fn
                                      )(params, rng, lambda_, FLAGS.batch_size)
     updates, new_opt_state = optimizer.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
@@ -536,9 +535,10 @@ def main(_):
         desc_str += f"{KL=:.4f} | {kin=:.1f} | {lambda_=:.1f}"
       elif FLAGS.case == "mfg":
         KL = reverse_kl_loss_fn(params, rng, 0, FLAGS.batch_size)
-        pot = potential_loss_fn(params, rng, T, FLAGS.batch_size)
+        pot = potential_loss_fn(params, rng, 1, FLAGS.batch_size)
         kin = loss - KL * lambda_ - pot
         desc_str += f"{KL=:.4f} | {pot=:.2f} | {kin=:.2f} | {lambda_=:.1f}"
+        return
 
       iters.set_description_str(desc_str)
 
@@ -603,7 +603,7 @@ def main(_):
     #   fig_name=FLAGS.case + "_dist_traj"
     # )
 
-    t_array = jnp.linspace(0, T, 5)
+    t_array = jnp.linspace(0, 1, 5)
     utils.plot_samples_snapshot(
       sample_fn,
       params,
