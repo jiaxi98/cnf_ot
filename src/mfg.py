@@ -49,7 +49,7 @@ flags.DEFINE_integer("dim", 2, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
-T = 2
+T = 1
 
 def gaussian_2d(
   r: jnp.ndarray,
@@ -72,7 +72,7 @@ def gaussian_mixture_2d(r: jnp.ndarray, ) -> jnp.ndarray:
   return (rho1(r) + rho2(r) + rho3(r) + rho4(r)) / 4
 
 
-def sample_source_fn(
+def sample_gm_source_fn(
   seed: PRNGKey,
   sample_shape,
 ):
@@ -119,6 +119,19 @@ def sample_source_fn(
   sample = sample_[component_indices[jnp.arange(sample_shape)],
                    jnp.arange(sample_shape)]
   return sample
+
+
+def sample_g_source_fn(
+  seed: PRNGKey,
+  sample_shape,
+):
+  """
+  According to the exact solution from LQR, the initial condition is given by 
+  rho_0 \sim N(0, 2(T+1)I), we let T=1 here so the variance is 4.
+  """
+  
+  dim = 2
+  return jax.random.normal(seed, shape=(sample_shape, dim)) * 2
 
 
 def sample_target_fn(
@@ -231,7 +244,7 @@ def main(_):
     distribution.
     """
 
-    samples1 = sample_source_fn(seed=rng, sample_shape=batch_size)
+    samples1 = sample_g_source_fn(seed=rng, sample_shape=batch_size)
     samples2 = sample_target_fn(seed=rng, sample_shape=batch_size)
     samples = samples1 * (T - cond)/T + samples2 * cond/T
     fake_cond_ = np.ones((1, )) * cond
