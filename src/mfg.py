@@ -121,6 +121,7 @@ def sample_gm_source_fn(
   return sample
 
 
+# test the gaussian source
 def sample_g_source_fn(
   seed: PRNGKey,
   sample_shape,
