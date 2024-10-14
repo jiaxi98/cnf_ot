@@ -45,7 +45,7 @@ flags.DEFINE_enum(
 flags.DEFINE_boolean("use_64", True, "whether to use float64")
 flags.DEFINE_boolean("plot", False, "whether to plot resulting model density")
 
-flags.DEFINE_integer("dim", 2, "dimension of the base space")
+flags.DEFINE_integer("dim", 1, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
@@ -77,7 +77,7 @@ def sample_gm_source_fn(
   sample_shape,
 ):
 
-  dim = 2
+  dim = FLAGS.dim
   R = 5
   component_indices = jax.random.choice(
     seed, a=8, shape=(sample_shape, ), p=jnp.ones(8) / 8
@@ -131,8 +131,7 @@ def sample_g_source_fn(
   rho_0 \sim N(0, 2(T+1)I), we let T=1 here so the variance is 4.
   """
   
-  dim = 2
-  return jax.random.normal(seed, shape=(sample_shape, dim)) * 2
+  return jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) * 2
 
 
 def sample_target_fn(
@@ -140,8 +139,7 @@ def sample_target_fn(
   sample_shape,
 ):
 
-  dim = 2
-  return jax.random.normal(seed, shape=(sample_shape, dim))
+  return jax.random.normal(seed, shape=(sample_shape, FLAGS.dim))
 
 
 def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
