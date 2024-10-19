@@ -45,7 +45,7 @@ flags.DEFINE_enum(
 flags.DEFINE_boolean("use_64", True, "whether to use float64")
 flags.DEFINE_boolean("plot", False, "whether to plot resulting model density")
 
-flags.DEFINE_integer("dim", 1, "dimension of the base space")
+flags.DEFINE_integer("dim", 2, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
@@ -365,7 +365,7 @@ def main(_):
       log_p1 = log_prob_fn(params, r3 + dr, cond=jnp.ones(1) * t)
       log_p2 = log_prob_fn(params, r3 - dr, cond=jnp.ones(1) * t)
       score = score.at[:, i].set((log_p1 - log_p2) / dx)
-    velocity += score/beta
+    velocity -= score/beta
     return jnp.mean(velocity**2) * FLAGS.dim / 2
 
   # density fitting using the reverse KL divergence, the samples from the target distribution is available
@@ -452,11 +452,10 @@ def main(_):
     """Loss of the mean-field potential game
     """
 
-    loss = lambda_ * reverse_kl_loss_fn(params, rng, 0, batch_size) \
+    loss = lambda_ * kl_loss_fn(params, rng, 0, batch_size) \
       + potential_loss_fn(params, rng, T, batch_size)
     t_batch_size = 20  # 10
     t_batch = jax.random.uniform(rng, (t_batch_size, )) * T
-    print(t_batch.shape)
     for t in t_batch:
       loss += kinetic_with_score_loss_fn(
         t, params, rng, batch_size // 32
@@ -547,7 +546,8 @@ def main(_):
         kin = loss - KL * lambda_
         desc_str += f"{KL=:.4f} | {kin=:.1f} | {lambda_=:.1f}"
       elif FLAGS.case == "mfg":
-        KL = reverse_kl_loss_fn(params, rng, 0, FLAGS.batch_size)
+        # KL = reverse_kl_loss_fn(params, rng, 0, FLAGS.batch_size)
+        KL = kl_loss_fn(params, rng, 0, FLAGS.batch_size)
         pot = potential_loss_fn(params, rng, T, FLAGS.batch_size)
         kin = loss - KL * lambda_ - pot
         desc_str += f"{KL=:.4f} | {pot=:.2f} | {kin=:.2f} | {lambda_=:.1f}"
@@ -683,51 +683,51 @@ def main(_):
   # plot the 1D mfg example：
   # plot the histogram w.r.t. the ground truth solution
   # plot the velocity at several time step v.s. the ground truth
-  # if FLAGS.case == "mfg" and FLAGS.dim == 1:
-  #   plt.clf()
-  #   t = jnp.linspace(0, 1, 6)
-  #   for i in range(2):
-  #     for j in range(3):
-  #       plt.subplot(2,3,i*3+j+1)
-  #       fake_cond = np.ones((FLAGS.test_batch_size, 1)) * t[i*3+j]
-  #       samples = sample_fn(params, seed=key, sample_shape=(FLAGS.test_batch_size, ), cond=fake_cond)
-  #       plt.hist(samples[...,0], bins=bins*4, density=True)
-  #       x = jnp.linspace(-5, 5, 1000)
-  #       rho = jax.vmap(distrax.Normal(loc=0, scale=jnp.sqrt(beta*2*(2-t[i*3+j]))).prob)(x)
-  #       plt.plot(x, rho, label=r"$\rho_*$")
-  #       plt.legend()
-  #   plt.savefig("results/fig/mfg.pdf")
-  #   plt.clf()
+  if FLAGS.case == "mfg" and FLAGS.dim == 1:
+    plt.clf()
+    t = jnp.linspace(0, 1, 6)
+    for i in range(2):
+      for j in range(3):
+        plt.subplot(2,3,i*3+j+1)
+        fake_cond = np.ones((FLAGS.test_batch_size, 1)) * t[i*3+j]
+        samples = sample_fn(params, seed=key, sample_shape=(FLAGS.test_batch_size, ), cond=fake_cond)
+        plt.hist(samples[...,0], bins=bins*4, density=True)
+        x = jnp.linspace(-5, 5, 1000)
+        rho = jax.vmap(distrax.Normal(loc=0, scale=jnp.sqrt(beta*2*(2-t[i*3+j]))).prob)(x)
+        plt.plot(x, rho, label=r"$\rho_*$")
+        plt.legend()
+    plt.savefig("results/fig/mfg.pdf")
+    plt.clf()
 
-  #   kinetic_err = []
-  #   t_array = jnp.linspace(0, 1, 101)
-  #   batch_size = 1000
-  #   for t in t_array:
-  #     fake_cond_ = np.ones((batch_size, 1)) * t
-  #     samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
-  #     xi = inverse_fn(params, samples, fake_cond_)
-  #     velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)[jnp.arange(batch_size),:,jnp.arange(batch_size),0]
-  #     ground_truth = -jnp.sqrt(1/8/(2-t)) * samples
-  #     kinetic_err.append(jnp.mean((velocity - ground_truth)**2))
-  #     plt.figure(figsize=(4, 2))
-  #     plt.scatter(samples, velocity, c="b", label="compute", s=.1)
-  #     plt.scatter(samples, ground_truth, c="r", label="ground truth", s=.1)
-  #     plt.legend()
-  #     plt.title("t = {:.2f}".format(t))
-  #     plt.savefig("results/fig/{:.2f}.pdf".format(t))
-  #     plt.clf()
-  #   plt.plot(t_array, kinetic_err, label=r"$\left\| \dot{x} - \dot{x}_* \right\|^2$")
-  #   plt.legend()
-  #   plt.savefig("results/fig/mfg_kin.pdf")
-  #   breakpoint()
+    kinetic_err = []
+    t_array = jnp.linspace(0, 1, 101)
+    batch_size = 1000
+    for t in t_array:
+      fake_cond_ = np.ones((batch_size, 1)) * t
+      samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+      xi = inverse_fn(params, samples, fake_cond_)
+      velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)[jnp.arange(batch_size),:,jnp.arange(batch_size),0]
+      ground_truth = -jnp.sqrt(1/8/(2-t)) * samples
+      kinetic_err.append(jnp.mean((velocity - ground_truth)**2))
+      plt.figure(figsize=(4, 2))
+      plt.scatter(samples, velocity, c="b", label="compute", s=.1)
+      plt.scatter(samples, ground_truth, c="r", label="ground truth", s=.1)
+      plt.legend()
+      plt.title("t = {:.2f}".format(t))
+      plt.savefig("results/fig/{:.2f}.pdf".format(t))
+      plt.clf()
+    plt.plot(t_array, kinetic_err, label=r"$\left\| \dot{x} - \dot{x}_* \right\|^2$")
+    plt.legend()
+    plt.savefig("results/fig/mfg_kin.pdf")
+    breakpoint()
 
-  #   batch_size = FLAGS.batch_size
-  #   loss = potential_loss_fn(params, rng, 1, batch_size)
-  #   t_batch_size = 100 # 10
-  #   t_batch = jax.random.uniform(rng, (t_batch_size, ))
-  #   for _ in range(t_batch_size):
-  #       loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
-  #   print("loss: {:.4f}".format(loss))
+    batch_size = FLAGS.batch_size
+    loss = potential_loss_fn(params, rng, 1, batch_size)
+    t_batch_size = 100 # 10
+    t_batch = jax.random.uniform(rng, (t_batch_size, ))
+    for _ in range(t_batch_size):
+        loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
+    print("loss: {:.4f}".format(loss))
 
 
 if __name__ == "__main__":

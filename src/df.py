@@ -45,7 +45,7 @@ flags.DEFINE_enum(
 flags.DEFINE_boolean("use_64", True, "whether to use float64")
 flags.DEFINE_boolean("plot", False, "whether to plot resulting model density")
 
-flags.DEFINE_integer("dim", 2, "dimension of the base space")
+flags.DEFINE_integer("dim", 1, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
@@ -73,35 +73,41 @@ def prob_fn1_(r: jnp.ndarray, ) -> jnp.ndarray:
   return (rho1(r) + rho2(r) + rho3(r) + rho4(r)) / 4
 
 
+# def sample_fn1(
+#   seed: PRNGKey,
+#   sample_shape,
+# ):
+#   """t=0"""
+
+#   R = 5.0
+#   component_indices = jax.random.choice(
+#     seed, a=4, shape=(sample_shape, ), p=jnp.ones(4) / 4
+#   )
+#   sample_ = jnp.zeros((4, sample_shape, FLAGS.dim))
+#   sample_ = sample_.at[0].set(
+#     jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([0.0, R])
+#   )
+#   sample_ = sample_.at[1].set(
+#     jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([R, 0.0])
+#   )
+#   sample_ = sample_.at[2].set(
+#     jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([0.0, -R])
+#   )
+#   sample_ = sample_.at[3].set(
+#     jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([-R, 0.0])
+#   )
+
+#   sample = sample_[component_indices[jnp.arange(sample_shape)],
+#                    jnp.arange(sample_shape)]
+#   return sample
+
 def sample_fn1(
   seed: PRNGKey,
   sample_shape,
 ):
-  """t=0"""
+  """t=1"""
 
-  dim = 2.0
-  R = 5.0
-  component_indices = jax.random.choice(
-    seed, a=4, shape=(sample_shape, ), p=jnp.ones(4) / 4
-  )
-  sample_ = jnp.zeros((4, sample_shape, dim))
-  sample_ = sample_.at[0].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, R])
-  )
-  sample_ = sample_.at[1].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0.0])
-  )
-  sample_ = sample_.at[2].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, -R])
-  )
-  sample_ = sample_.at[3].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0.0])
-  )
-
-  sample = sample_[component_indices[jnp.arange(sample_shape)],
-                   jnp.arange(sample_shape)]
-  return sample
-
+  return jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) * 3
 
 def prob_fn2_(r: jnp.ndarray, ) -> jnp.ndarray:
   """t=1"""
@@ -116,8 +122,7 @@ def sample_fn2(
 ):
   """t=1"""
 
-  dim = 2
-  return jax.random.normal(seed, shape=(sample_shape, dim))
+  return jax.random.normal(seed, shape=(sample_shape, FLAGS.dim))
 
 
 def prob_fn2__(r: jnp.ndarray, ) -> jnp.ndarray:
@@ -133,10 +138,9 @@ def sample_fn2_(
 ):
   """t=1"""
 
-  dim = 2
-  return jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array(
+  return jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array(
     [-3.0, -3.0]
-  ).reshape((1, dim))
+  ).reshape((1, FLAGS.dim))
 
 
 def prob_fn3_(r: jnp.ndarray, ) -> jnp.ndarray:
@@ -157,23 +161,22 @@ def sample_fn3(
 ):
   """t=0.5"""
 
-  dim = 2
   R = 2.5
   component_indices = jax.random.choice(
     seed, a=4, shape=(sample_shape, ), p=jnp.ones(4) / 4
   )
-  sample_ = jnp.zeros((4, sample_shape, dim))
+  sample_ = jnp.zeros((4, sample_shape, FLAGS.dim))
   sample_ = sample_.at[0].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, R])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([0.0, R])
   )
   sample_ = sample_.at[1].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0.0])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([R, 0.0])
   )
   sample_ = sample_.at[2].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, -R])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([0.0, -R])
   )
   sample_ = sample_.at[3].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0.0])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([-R, 0.0])
   )
 
   sample = sample_[component_indices[jnp.arange(sample_shape)],
@@ -199,23 +202,22 @@ def sample_fn4(
 ):
   """t=0.25"""
 
-  dim = 2
   R = 3.75
   component_indices = jax.random.choice(
     seed, a=4, shape=(sample_shape, ), p=jnp.ones(4) / 4
   )
-  sample_ = jnp.zeros((4, sample_shape, dim))
+  sample_ = jnp.zeros((4, sample_shape, FLAGS.dim))
   sample_ = sample_.at[0].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, R])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([0.0, R])
   )
   sample_ = sample_.at[1].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0.0])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([R, 0.0])
   )
   sample_ = sample_.at[2].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, -R])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([0.0, -R])
   )
   sample_ = sample_.at[3].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0.0])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([-R, 0.0])
   )
 
   sample = sample_[component_indices[jnp.arange(sample_shape)],
@@ -241,23 +243,22 @@ def sample_fn5(
 ):
   """t=0.75"""
 
-  dim = 2
   R = 1.25
   component_indices = jax.random.choice(
     seed, a=4, shape=(sample_shape, ), p=jnp.ones(4) / 4
   )
-  sample_ = jnp.zeros((4, sample_shape, dim))
+  sample_ = jnp.zeros((4, sample_shape, FLAGS.dim))
   sample_ = sample_.at[0].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, R])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([0.0, R])
   )
   sample_ = sample_.at[1].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0.0])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([R, 0.0])
   )
   sample_ = sample_.at[2].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, -R])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([0.0, -R])
   )
   sample_ = sample_.at[3].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0.0])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([-R, 0.0])
   )
 
   sample = sample_[component_indices[jnp.arange(sample_shape)],
@@ -297,10 +298,7 @@ def main(_):
   bins = 25
 
   # boundary condition on density
-  if FLAGS.dim == 1:
-    return
-
-  elif FLAGS.dim == 2:
+  if FLAGS.dim == 2:
     # prob_fn1 = jax.vmap(prob_fn1_)
     prob_fn1 = jax.vmap(prob_fn1_)
     prob_fn2 = jax.vmap(prob_fn2_)
@@ -350,14 +348,16 @@ def main(_):
 
     samples1 = sample_fn1(seed=rng, sample_shape=batch_size)
     samples2 = sample_fn2(seed=rng, sample_shape=batch_size)
-    samples3 = sample_fn3(seed=rng, sample_shape=batch_size)
-    samples4 = sample_fn4(seed=rng, sample_shape=batch_size)
-    samples5 = sample_fn5(seed=rng, sample_shape=batch_size)
+    # samples3 = sample_fn3(seed=rng, sample_shape=batch_size)
+    # samples4 = sample_fn4(seed=rng, sample_shape=batch_size)
+    # samples5 = sample_fn5(seed=rng, sample_shape=batch_size)
     samples = samples1*(1-cond)*(0.5-cond)*(0.75-cond)*(0.25-cond)*32/3 \
       + samples2*cond*(cond-0.5)*(cond-0.75)*(cond-0.25)*32/3 \
-      + samples3*cond*(1-cond)*(0.75-cond)*(cond-0.25)*64 \
-      + samples4*cond*(1-cond)*(0.75-cond)*(0.5-cond)*128/3 \
-      + samples5*cond*(1-cond)*(cond-0.25)*(cond-0.5)*128/3
+    # samples = samples1*(1-cond)*(0.5-cond)*(0.75-cond)*(0.25-cond)*32/3 \
+    #   + samples2*cond*(cond-0.5)*(cond-0.75)*(cond-0.25)*32/3 \
+    #   + samples3*cond*(1-cond)*(0.75-cond)*(cond-0.25)*64 \
+    #   + samples4*cond*(1-cond)*(0.75-cond)*(0.5-cond)*128/3 \
+    #   + samples5*cond*(1-cond)*(cond-0.25)*(cond-0.5)*128/3
     fake_cond_ = np.ones((1, )) * cond
     log_prob = model.apply.log_prob(params, samples, cond=fake_cond_)
     return -log_prob.mean()
@@ -408,10 +408,10 @@ def main(_):
   ) -> Array:
 
     return reverse_kl_loss_fn(params, rng, 0, batch_size) \
-      + reverse_kl_loss_fn(params, rng, 1, batch_size) \
-      + reverse_kl_loss_fn(params, rng, .5, batch_size) \
-      + reverse_kl_loss_fn(params, rng, .25, batch_size) \
-      + reverse_kl_loss_fn(params, rng, .75, batch_size)
+      + reverse_kl_loss_fn(params, rng, 1, batch_size) # \
+      # + reverse_kl_loss_fn(params, rng, .5, batch_size) \
+      # + reverse_kl_loss_fn(params, rng, .25, batch_size) \
+      # + reverse_kl_loss_fn(params, rng, .75, batch_size)
 
   @jax.jit
   def update(params: hk.Params, rng: PRNGKey, lambda_,
@@ -444,7 +444,7 @@ def main(_):
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
   lambda_ = 1e2
-  print_ = "KL"
+  print_ = "rKL"
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, lambda_, opt_state)
@@ -606,47 +606,6 @@ def main(_):
 
     # print("kl loss: ",
     #   kl_loss_fn(params, rng, cond=0, FLAGS.batch_size))
-
-  # plot the 1D mfg example：
-  # plot the histogram w.r.t. the ground truth solution
-  # plot the velocity at several time step v.s. the ground truth
-  # if FLAGS.case == "mfg" and FLAGS.dim == 1:
-  #   plt.clf()
-  #   t = jnp.linspace(0, 1, 6)
-  #   for i in range(2):
-  #     for j in range(3):
-  #       plt.subplot(2,3,i*3+j+1)
-  #       fake_cond = np.ones((FLAGS.test_batch_size, 1)) * t[i*3+j]
-  #       samples = sample_fn(params, seed=key, sample_shape=(FLAGS.test_batch_size, ), cond=fake_cond)
-  #       plt.hist(samples[...,0], bins=bins*4, density=True)
-  #       x = jnp.linspace(-5, 5, 1000)
-  #       rho = jax.vmap(distrax.Normal(loc=0, scale=jnp.sqrt(beta*2*(2-t[i*3+j]))).prob)(x)
-  #       plt.plot(x, rho, label=r"$\rho_*$")
-  #       plt.legend()
-  #   plt.savefig("results/fig/mfg.pdf")
-  #   plt.clf()
-
-  #   kinetic_err = []
-  #   t_array = jnp.linspace(0, 1, 101)
-  #   batch_size = 1000
-  #   for t in t_array:
-  #     fake_cond_ = np.ones((batch_size, 1)) * t
-  #     samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
-  #     xi = inverse_fn(params, samples, fake_cond_)
-  #     velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)[jnp.arange(batch_size),:,jnp.arange(batch_size),0]
-  #     ground_truth = -jnp.sqrt(1/8/(2-t)) * samples
-  #     kinetic_err.append(jnp.mean((velocity - ground_truth)**2))
-  #     plt.figure(figsize=(4, 2))
-  #     plt.scatter(samples, velocity, c="b", label="compute", s=.1)
-  #     plt.scatter(samples, ground_truth, c="r", label="ground truth", s=.1)
-  #     plt.legend()
-  #     plt.title("t = {:.2f}".format(t))
-  #     plt.savefig("results/fig/{:.2f}.pdf".format(t))
-  #     plt.clf()
-  #   plt.plot(t_array, kinetic_err, label=r"$\left\| \dot{x} - \dot{x}_* \right\|^2$")
-  #   plt.legend()
-  #   plt.savefig("results/fig/mfg_kin.pdf")
-  #   breakpoint()
 
   #   def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
   #     """Kinetic energy along the trajectory at time t, notice that this contains not only the velocity but also
