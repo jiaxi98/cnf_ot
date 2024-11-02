@@ -17,28 +17,39 @@ def calc_kinetic_energy(
   inverse_fn,
   params: hk.Params,
   rng: PRNGKey,
-  batch_size: int = 4096,
-  t_size: int = 1000,
+  batch_size: int = 65536,
+  t_size: int = 10000,
   dim: int = 1
 ):
 
   t_array = jnp.linspace(0, 1, t_size)
-  kinetic_energy = 0
+  e_kin = 0
+  dt = 0.01
+
   for t in t_array:
 
     key, rng = jax.random.split(rng)
-    fake_cond_ = np.ones((batch_size, 1)) * t
-    samples = sample_fn(
+    fake_cond_ = np.ones((batch_size, 1)) * (t - dt / 2)
+    # samples = sample_fn(
+    #   params, seed=key, sample_shape=(batch_size, ), cond=fake_cond_
+    # )
+    # xi = inverse_fn(params, samples, fake_cond_)
+    # velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
+    # kinetic_energy += jnp.mean(
+    #   velocity[jnp.arange(batch_size), :,
+    #            jnp.arange(batch_size), 0]**2
+    # )
+    r1 = sample_fn(
       params, seed=key, sample_shape=(batch_size, ), cond=fake_cond_
     )
-    xi = inverse_fn(params, samples, fake_cond_)
-    velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
-    kinetic_energy += jnp.mean(
-      velocity[jnp.arange(batch_size), :,
-               jnp.arange(batch_size), 0]**2
+    fake_cond_ = np.ones((batch_size, 1)) * (t + dt / 2)
+    r2 = sample_fn(
+      params, seed=key, sample_shape=(batch_size, ), cond=fake_cond_
     )
+    velocity = (r2 - r1) / dt
+    e_kin += jnp.mean(velocity**2) / 2
 
-  return kinetic_energy / t_size * dim
+  return e_kin / t_size * dim
 
 
 def plot_distribution_trajectory(
@@ -132,7 +143,7 @@ def plot_samples_snapshot(
 def plot_density_snapshot(
   log_prob_fn: callable,
   params: hk.Params,
-  t_array = jnp.linspace(0, 1, 5),
+  t_array = jnp.linspace(0, 1, 10),
 ):
 
   plt.clf()
@@ -140,10 +151,10 @@ def plot_density_snapshot(
   cmap = plt.cm.Reds
   norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
 
-  for i in range(5):
-    plt.subplot(1, 5, i + 1)
-    x_min = -8
-    x_max = 8
+  for i in range(10):
+    plt.subplot(2, 5, i + 1)
+    x_min = -6
+    x_max = 6
     x = np.linspace(x_min, x_max, 100)
     y = np.linspace(x_min, x_max, 100)
     X, Y = np.meshgrid(x, y)
@@ -151,13 +162,14 @@ def plot_density_snapshot(
     fake_cond_ = np.ones((1, )) * t_array[i]
     log_prob = log_prob_fn(params, XY, cond=fake_cond_)
     plt.imshow(jnp.exp(log_prob.reshape(100, 100)))
+    plt.axis("off")
     plt.title("t = {:.2f}".format(t_array[i]))
 
   plt.savefig("results/fig/density.pdf")
   plt.clf()
 
 
-def plot_trajectory(
+def plot_density_and_trajectory(
   forward_fn: callable,
   inverse_fn: callable,
   log_prob_fn: callable,
@@ -167,21 +179,33 @@ def plot_trajectory(
 ):
   
   plt.clf()
-  x_min = -8
-  x_max = 8
+  fig, axs = plt.subplots(2, 5, figsize=(5, 2))
+  axs = axs.flatten()
+  x_min = -5
+  x_max = 5
   x = np.linspace(x_min, x_max, 100)
   y = np.linspace(x_min, x_max, 100)
   X, Y = np.meshgrid(x, y)
   XY = jnp.hstack([X.reshape(100**2, 1), Y.reshape(100**2, 1)])
-  fake_cond_ = np.zeros((1, ))
-  log_prob = log_prob_fn(params, XY, cond=fake_cond_)
-  plt.imshow(jnp.exp(log_prob.reshape(100, 100)), cmap=cm.viridis)
-  
   xi = inverse_fn(params, r_, jnp.zeros(1))
-  colors = ["red", "green", "blue", "yellow"]
-  for t in t_array:
-    r_ = forward_fn(params, xi, jnp.ones(1) * t)
-    plt.scatter((r_[:, 0]+8)/16*100, (r_[:, 1]+8)/16*100, c="red", s=5)
+
+  for i in range(10):
+    fake_cond_ = np.ones((1, )) * i * .1
+    log_prob = log_prob_fn(params, XY, cond=fake_cond_)
+    axs[i].imshow(jnp.exp(log_prob.reshape(100, 100)), cmap=cm.viridis)
+    for t in t_array:
+      r_ = forward_fn(params, xi, jnp.ones(1) * t)
+      axs[i].scatter(
+        (r_[:, 0]+x_max)/2/x_max*100, 
+        (r_[:, 1]+x_max)/2/x_max*100, 
+        c="red",
+        marker='.',
+        s=.1
+      )
+    axs[i].axis("off")
+  
+  fig.tight_layout(pad=0.2)
+  # plt.subplots_adjust(hspace=0.1)
   plt.savefig("results/fig/traj.pdf")
 
 
