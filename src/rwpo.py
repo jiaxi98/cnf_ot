@@ -52,7 +52,9 @@ flags.DEFINE_integer("dim", 2, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
-T = 1
+# parameter for rwpo exp
+T = 2
+beta = 1
 
 def gaussian_2d(
   r: jnp.ndarray,
@@ -63,65 +65,6 @@ def gaussian_2d(
   return jnp.exp(
     -0.5 * jnp.dot(jnp.dot((r - mean), jnp.linalg.inv(var)), (r - mean).T)
   ) / jnp.sqrt(jnp.linalg.det(2 * jnp.pi * var))
-
-
-def gaussian_mixture_2d(r: jnp.ndarray, ) -> jnp.ndarray:
-
-  R = 10
-  rho1 = partial(gaussian_2d, mean=jnp.array([0.0, R]), var=jnp.eye(2))
-  rho2 = partial(gaussian_2d, mean=jnp.array([R, 0.0]), var=jnp.eye(2))
-  rho3 = partial(gaussian_2d, mean=jnp.array([0.0, -R]), var=jnp.eye(2))
-  rho4 = partial(gaussian_2d, mean=jnp.array([-R, 0.0]), var=jnp.eye(2))
-  return (rho1(r) + rho2(r) + rho3(r) + rho4(r)) / 4
-
-
-def sample_gm_source_fn(
-  seed: PRNGKey,
-  sample_shape,
-):
-
-  dim = FLAGS.dim
-  R = 5
-  component_indices = jax.random.choice(
-    seed, a=8, shape=(sample_shape, ), p=jnp.ones(8) / 8
-  )
-  sample_ = jnp.zeros((8, sample_shape, dim))
-  sample_ = sample_.at[0].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([0.0, R])
-  )
-  sample_ = sample_.at[1].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([R, 0.0])
-  )
-  sample_ = sample_.at[2].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([0.0, -R])
-  )
-  sample_ = sample_.at[3].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([-R, 0.0])
-  )
-  sample_ = sample_.at[4].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([0.6*R, 0.8*R])
-  )
-  sample_ = sample_.at[5].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([0.6*R, -0.8*R])
-  )
-  sample_ = sample_.at[6].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([-0.6*R, -0.8*R])
-  )
-  sample_ = sample_.at[7].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([-0.6*R, 0.8*R])
-  )
-
-  sample = sample_[component_indices[jnp.arange(sample_shape)],
-                   jnp.arange(sample_shape)]
-  return sample
 
 
 # test the gaussian source
@@ -174,8 +117,6 @@ def main(_):
   print(params.keys())
 
   opt_state = optimizer.init(params)
-  bins = 25
-  beta = 1
 
   # boundary condition on density
   if FLAGS.dim == 1:
@@ -207,7 +148,11 @@ def main(_):
     # target_prob = jax.vmap(partial(gaussian_2d, mean=mu2, var=jnp.eye(2)*var2))
     # multi-to-one case
     source_prob = jax.vmap(
-      partial(gaussian_2d, mean=jnp.array([0.0, 0.0]), var=4 * jnp.eye(2))
+      partial(
+        gaussian_2d,
+        mean=jnp.array([0.0, 0.0]),
+        var=2 * jnp.eye(2) / beta * (T + 1)
+      )
     )
     target_prob = jax.vmap(
       partial(gaussian_2d, mean=jnp.array([0, 0]), var=jnp.eye(2) * var2)
@@ -249,27 +194,6 @@ def main(_):
     fake_cond_ = np.ones((1, )) * cond
     log_prob = model.apply.log_prob(params, samples, cond=fake_cond_)
     return -log_prob.mean()
-
-  # @partial(jax.jit, static_argnames=["batch_size"])
-  def mse_loss_fn(
-    params: hk.Params, rng: PRNGKey, cond, batch_size: int
-  ) -> Array:
-    """MSE between the normalizing flow and the reference distribution.
-    """
-
-    fake_cond_ = jnp.ones((batch_size, 1)) * cond
-    samples, log_prob = model.apply.sample_and_log_prob(
-      params,
-      cond=fake_cond_,
-      seed=rng,
-      sample_shape=(batch_size, ),
-    )
-    return (
-      (
-        jnp.exp(log_prob) -
-        (source_prob(samples) * (T - cond)/T + target_prob(samples) * cond/T)
-      )**2
-    ).mean()
 
   # @partial(jax.jit, static_argnames=["batch_size"])
   def potential_loss_fn(
@@ -395,7 +319,7 @@ def main(_):
     for t in t_batch:
       loss += kinetic_with_score_loss_fn(
         t, params, rng, batch_size // 32
-      ) / t_batch_size
+      ) / t_batch_size * T
 
     return loss
 
@@ -437,50 +361,7 @@ def main(_):
 
       iters.set_description_str(desc_str)
 
-  # plot the distribution at t=0, 1 after training
-  plt.figure(figsize=(6, 2))
-  plt.subplot(131)
-  if FLAGS.dim == 1:
-    # for 1d we use histogram
-    fake_cond = np.zeros((FLAGS.batch_size, 1))
-    samples = sample_fn(
-      params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
-    )
-    plt.hist(samples[..., 0], bins=bins * 4, density=True)
-    fake_cond = np.ones((FLAGS.batch_size, 1))
-    samples = sample_fn(
-      params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
-    )
-    plt.hist(samples[..., 0], bins=bins * 4, density=True)
-    print(
-      "kinetic energy: ",
-      utils.calc_kinetic_energy(
-        sample_fn, forward_fn, inverse_fn, params, rng, FLAGS.dim
-      )
-    )
-    plt.savefig("results/fig/density_1d.pdf")
-    plt.show()
-
-    plot_1d_map = utils.plot_1d_map(
-      forward_fn=forward_fn, params=params, final_mean=3
-    )
-    plot_1d_map
-
-  elif FLAGS.dim == 2 and FLAGS.case == "density fit":
-    plt.clf()
-    fake_cond = np.zeros((FLAGS.batch_size, 1))
-    samples = sample_fn(
-      params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
-    )
-    plt.scatter(samples[..., 0], samples[..., 1], s=3, c="r")
-    fake_cond = np.ones((FLAGS.batch_size, 1))
-    samples = sample_fn(
-      params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
-    )
-    plt.scatter(samples[..., 0], samples[..., 1], s=1, c="b")
-    plt.savefig("results/fig/density_fit.pdf")
-
-  elif FLAGS.dim == 2:
+  if FLAGS.dim == 2:
     # this plot the distribution at t=0,1 after training
     # as well as the error of the learned mapping at t=0, 1
     # based on grid evaluation
@@ -492,17 +373,19 @@ def main(_):
     plt.savefig("results/fig/loss_hist.pdf")
     param_count = sum(x.size for x in jax.tree.leaves(params))
     print("Network parameters: {}".format(param_count))
-    e_kin = utils.calc_score_kinetic_energy(
+    e_kin = T * utils.calc_score_kinetic_energy(
       sample_fn,
       log_prob_fn,
       params,
+      T,
+      beta,
+      FLAGS.dim,
       rng,
-      dim=FLAGS.dim
     )
     e_pot = potential_loss_fn(params, rng, T, 65536)
     print("kinetic energy: ", e_kin)
     print("potential energy: ", e_pot)
-    true_val = (2 + jnp.log(4)) / beta
+    true_val = 2 * (1 + jnp.log(T + 1)) / beta
     print("total energy: {:.3f}|relative err: {:.3e}".format(
       e_kin + e_pot, (e_kin + e_pot - true_val) / true_val * 100
     ))

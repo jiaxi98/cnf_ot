@@ -45,14 +45,15 @@ def calc_score_kinetic_energy(
   sample_fn,
   log_prob_fn,
   params: hk.Params,
-  key: PRNGKey,
+  T: float = 1,
+  beta: float = 1,
+  dim: int = 1,
+  key: PRNGKey = PRNGKey(0),
   batch_size: int = 65536,
   t_size: int = 10000,
-  dim: int = 1,
-  beta: float = 1,
 ):
 
-  t_array = jnp.linspace(0, 1, t_size)
+  t_array = jnp.linspace(0, T, t_size)
   e_kin = 0
   dt = 0.01
 
