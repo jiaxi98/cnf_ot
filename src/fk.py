@@ -1,4 +1,5 @@
-"""A simple example of a flow model trained to solve the Wassserstein geodesic problem."""
+"""A simple example of a flow model trained to solve the Fokker-Planck
+equation."""
 from functools import partial
 from typing import Iterator, Optional, Tuple
 
@@ -203,7 +204,9 @@ def main(_):
     # source_prob = jax.vmap(partial(gaussian_2d, mean=mu1, var=jnp.eye(2)*var1))
     # target_prob = jax.vmap(partial(gaussian_2d, mean=mu2, var=jnp.eye(2)*var2))
     # multi-to-one case
-    source_prob = jax.vmap(gaussian_mixture_2d)
+    source_prob = jax.vmap(
+      partial(gaussian_2d, mean=jnp.array([0.0, 0.0]), var=4 * jnp.eye(2))
+    )
     target_prob = jax.vmap(
       partial(gaussian_2d, mean=jnp.array([0, 0]), var=jnp.eye(2) * var2)
     )
@@ -215,11 +218,6 @@ def main(_):
   ) -> Array:
     """KL-divergence loss function.
     KL-divergence between the normalizing flow and the reference distribution.
-    
-    TODO: here, we assume the p.d.f. of the target distribution is known. 
-    In the case where we only access to samples from target distribution,
-    KL-divergence is not calculable and we need to shift to other integral 
-    probability metric, e.g. MMD.
     """
 
     fake_cond_ = np.ones((batch_size, 1)) * cond
@@ -255,11 +253,6 @@ def main(_):
     params: hk.Params, rng: PRNGKey, cond, batch_size: int
   ) -> Array:
     """MSE between the normalizing flow and the reference distribution.
-    
-    TODO: here, we assume the p.d.f. of the target distribution is known. 
-    In the case where we only access to samples from target distribution,
-    KL-divergence is not calculable and we need to shift to other integral 
-    probability metric, e.g. MMD.
     """
 
     fake_cond_ = jnp.ones((batch_size, 1)) * cond
@@ -365,7 +358,7 @@ def main(_):
       log_p1 = log_prob_fn(params, r3 + dr, cond=jnp.ones(1) * t)
       log_p2 = log_prob_fn(params, r3 - dr, cond=jnp.ones(1) * t)
       score = score.at[:, i].set((log_p1 - log_p2) / dx)
-    velocity -= score/beta
+    velocity += score/beta
     return jnp.mean(velocity**2) * FLAGS.dim / 2
 
   # density fitting using the reverse KL divergence, the samples from the target distribution is available
@@ -458,7 +451,7 @@ def main(_):
     t_batch = jax.random.uniform(rng, (t_batch_size, )) * T
     for t in t_batch:
       loss += kinetic_with_score_loss_fn(
-        t, params, rng, batch_size // 32
+        t, params, rng, batch_size // 64
       ) / t_batch_size
 
     return loss
@@ -529,7 +522,7 @@ def main(_):
   # training loop
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
-  lambda_ = 100
+  lambda_ = 1000
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, lambda_, opt_state)
@@ -601,63 +594,6 @@ def main(_):
     # this plot the distribution at t=0,1 after training
     # as well as the error of the learned mapping at t=0, 1
     # based on grid evaluation
-
-    # utils.plot_distribution_trajectory(
-    #   sample_fn,
-    #   forward_fn,
-    #   params,
-    #   key,
-    #   FLAGS.batch_size,
-    #   mu1,
-    #   mu2,
-    #   var1,
-    #   var2,
-    #   fig_name=FLAGS.case + "_dist_traj"
-    # )
-
-    t_array = jnp.linspace(0, T, 5)
-    utils.plot_samples_snapshot(
-      sample_fn,
-      params,
-      key,
-      FLAGS.batch_size,
-      t_array,
-    )
-
-    utils.plot_density_snapshot(
-      log_prob_fn,
-      params,
-      t_array,
-    )
-
-    # # plot the trajectory of the distribution and velocity field
-    plot_traj_and_velocity = partial(
-      utils.plot_traj_and_velocity,
-      sample_fn=sample_fn,
-      forward_fn=forward_fn,
-      inverse_fn=inverse_fn,
-      params=params,
-      rng=rng,
-      t_array=t_array,
-    )
-    plot_traj_and_velocity(quiver_size=0.01)
-
-    R = 5
-    r_ = jnp.vstack([
-      jnp.array([0.0, R]), jnp.array([0.0, -R]),
-      jnp.array([R, 0.0]), jnp.array([-R, 0.0]),
-      jnp.array([0.6*R, 0.8*R]), jnp.array([0.6*R, -0.8*R]),
-      jnp.array([-0.6*R, 0.8*R]), jnp.array([-0.6*R, -0.8*R])])
-    t_array = jnp.linspace(0, T, 20)
-    utils.plot_trajectory(
-      forward_fn,
-      inverse_fn,
-      log_prob_fn,
-      params=params,
-      r_ = r_,
-      t_array=t_array,
-    )
-    
     plt.clf()
     plt.plot(
       jnp.linspace(5001, FLAGS.epochs, FLAGS.epochs - 5000),
@@ -667,18 +603,37 @@ def main(_):
 
     param_count = sum(x.size for x in jax.tree.leaves(params))
     print("Network parameters: {}".format(param_count))
-    # print("kinetic energy: ",
-    #   utils.calc_kinetic_energy(
-    #     sample_fn,
-    #     forward_fn,
-    #     inverse_fn,
-    #     params,
-    #     rng,
-    #     dim=FLAGS.dim)
-    # )
+    print("kinetic energy: ",
+      utils.calc_score_kinetic_energy(
+        sample_fn,
+        log_prob_fn,
+        params,
+        rng,
+        dim=FLAGS.dim)
+    )
+    print("potential energy: ", 
+      potential_loss_fn(params, rng, T, FLAGS.batch_size)
+    )
+    breakpoint()
 
-    # print("kl loss: ",
-    #   kl_loss_fn(params, rng, cond=0, FLAGS.batch_size))
+    r_ = jnp.vstack(
+      [jnp.array([-1.0, -1.0]), jnp.array([-1.0, -0.0]),
+       jnp.array([-1.0, 1.0]), jnp.array([0.0, -1.0]),
+       jnp.array([0.0, 0.0]), jnp.array([0.0, 1.0]),
+       jnp.array([1.0, -1.0]), jnp.array([1.0, 0.0]),
+       jnp.array([1.0, 1.0])]
+    )
+    r_ = r_ * 3
+    t_array = jnp.linspace(0, T, 20)
+    utils.plot_density_and_trajectory(
+      forward_fn,
+      inverse_fn,
+      log_prob_fn,
+      params=params,
+      r_ = r_,
+      t_array=t_array,
+    )
+    breakpoint()
 
   # plot the 1D mfg example：
   # plot the histogram w.r.t. the ground truth solution

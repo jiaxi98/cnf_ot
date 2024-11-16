@@ -13,8 +13,6 @@ from src.types import Batch, OptState, PRNGKey
 
 def calc_kinetic_energy(
   sample_fn,
-  forward_fn,
-  inverse_fn,
   params: hk.Params,
   rng: PRNGKey,
   batch_size: int = 65536,
@@ -30,15 +28,6 @@ def calc_kinetic_energy(
 
     key, rng = jax.random.split(rng)
     fake_cond_ = np.ones((batch_size, 1)) * (t - dt / 2)
-    # samples = sample_fn(
-    #   params, seed=key, sample_shape=(batch_size, ), cond=fake_cond_
-    # )
-    # xi = inverse_fn(params, samples, fake_cond_)
-    # velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
-    # kinetic_energy += jnp.mean(
-    #   velocity[jnp.arange(batch_size), :,
-    #            jnp.arange(batch_size), 0]**2
-    # )
     r1 = sample_fn(
       params, seed=key, sample_shape=(batch_size, ), cond=fake_cond_
     )
@@ -50,6 +39,95 @@ def calc_kinetic_energy(
     e_kin += jnp.mean(velocity**2) / 2
 
   return e_kin / t_size * dim
+
+
+def calc_score_kinetic_energy(
+  sample_fn,
+  log_prob_fn,
+  params: hk.Params,
+  key: PRNGKey,
+  batch_size: int = 65536,
+  t_size: int = 10000,
+  dim: int = 1,
+  beta: float = 1,
+):
+
+  t_array = jnp.linspace(0, 1, t_size)
+  e_kin = 0
+  dt = 0.01
+
+  for t in t_array:
+
+    key, rng = jax.random.split(key)
+    fake_cond_ = np.ones((batch_size, 1)) * (t - dt / 2)
+    r1 = sample_fn(
+      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+    )
+    fake_cond_ = np.ones((batch_size, 1)) * (t + dt / 2)
+    r2 = sample_fn(
+      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+    )
+    fake_cond_ = np.ones((batch_size, 1)) * t
+    r3 = sample_fn(
+      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+    )
+    velocity = (r2 - r1) / dt
+    score = jnp.zeros((batch_size, dim))
+    dx = 0.01
+    for i in range(dim):
+      dr = jnp.zeros((1, dim))
+      dr = dr.at[0, i].set(dx/2)
+      log_p1 = log_prob_fn(params, r3 + dr, cond=jnp.ones(1) * t)
+      log_p2 = log_prob_fn(params, r3 - dr, cond=jnp.ones(1) * t)
+      score = score.at[:, i].set((log_p1 - log_p2) / dx)
+    velocity += score/beta
+    plt.quiver
+    e_kin += jnp.mean(velocity**2) / 2
+
+  return e_kin / t_size * dim
+
+
+def plot_score(
+  log_prob_fn: callable,
+  params: hk.Params,
+  r_: jnp.array,
+):
+  
+  plt.clf()
+  fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+  # axs = axs.flatten()
+  x_min = -5
+  x_max = 5
+  x = np.linspace(x_min, x_max, 100)
+  y = np.linspace(x_min, x_max, 100)
+  X, Y = np.meshgrid(x, y)
+  XY = jnp.hstack([X.reshape(100**2, 1), Y.reshape(100**2, 1)])
+  dim = r_.shape[-1]
+
+  for i in range(1):
+    fake_cond_ = np.ones((1, )) * i * .1
+    log_prob = log_prob_fn(params, XY, cond=fake_cond_)
+    ax.imshow(jnp.exp(log_prob.reshape(100, 100)), cmap=cm.viridis)
+    score = jnp.zeros((r_.shape[0], dim))
+    dx = 0.01
+    for i in range(dim):
+      dr = jnp.zeros((1, dim))
+      dr = dr.at[0, i].set(dx/2)
+      log_p1 = log_prob_fn(params, r_ + dr, cond=jnp.ones(1) * 0)
+      log_p2 = log_prob_fn(params, r_ - dr, cond=jnp.ones(1) * 0)
+      score = score.at[:, i].set((log_p1 - log_p2) / dx)
+
+    ax.quiver(
+      (r_[:, 0]+x_max)/2/x_max*100,
+      (r_[:, 1]+x_max)/2/x_max*100,
+      score[:, 0],
+      score[:, 1]
+    )
+    ax.axis("off")
+  
+  fig.tight_layout(pad=0.2)
+  # plt.subplots_adjust(hspace=0.1)
+  plt.savefig("results/fig/score.pdf")
 
 
 def plot_distribution_trajectory(
@@ -148,8 +226,6 @@ def plot_density_snapshot(
 
   plt.clf()
   plt.figure(figsize=(10, 2))
-  cmap = plt.cm.Reds
-  norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
 
   for i in range(10):
     plt.subplot(2, 5, i + 1)
@@ -216,7 +292,6 @@ def plot_traj_and_velocity(
   params: hk.Params,
   rng: PRNGKey,
   t_array: jnp.array,
-  quiver_size: float = .1
 ):
 
   batch_size_pdf = 1024
