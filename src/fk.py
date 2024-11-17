@@ -46,7 +46,7 @@ flags.DEFINE_enum(
 flags.DEFINE_boolean("use_64", True, "whether to use float64")
 flags.DEFINE_boolean("plot", False, "whether to plot resulting model density")
 
-flags.DEFINE_integer("dim", 2, "dimension of the base space")
+flags.DEFINE_integer("dim", 3, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
@@ -54,18 +54,6 @@ T = 1
 a = 1 # drift coeff
 sigma = 1/2 # diffusion coeff sigma = D^2/2
 
-def gaussian_2d(
-  r: jnp.ndarray,
-  mean: jnp.ndarray = jnp.array([2, 3]),
-  var: jnp.ndarray = jnp.array([[2, .5], [.5, 1]])
-) -> jnp.ndarray:
-
-  return jnp.exp(
-    -0.5 * jnp.dot(jnp.dot((r - mean), jnp.linalg.inv(var)), (r - mean).T)
-  ) / jnp.sqrt(jnp.linalg.det(2 * jnp.pi * var))
-
-
-# test the gaussian source
 def sample_g_source_fn(
   seed: PRNGKey,
   sample_shape,
@@ -77,18 +65,12 @@ def sample_g_source_fn(
   
   return jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) * 2
 
-
 def sample_target_fn(
   seed: PRNGKey,
   sample_shape,
 ):
 
   return jax.random.normal(seed, shape=(sample_shape, FLAGS.dim))
-
-
-def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
-  return jnp.sum(r**2, axis=1) / 2
-
 
 def main(_):
 
@@ -112,50 +94,23 @@ def main(_):
   log_prob_fn = jax.jit(model.apply.log_prob)
   key, rng = jax.random.split(rng)
   params = model.init(key, np.zeros((1, FLAGS.dim)), np.zeros((1, )))
-  print(params.keys())
-
   opt_state = optimizer.init(params)
-  bins = 25
 
   # boundary condition on density
-  if FLAGS.dim == 1:
-    if FLAGS.case == "density fit":
-      # Gaussian source
-      # source_prob = jax.vmap(distrax.Normal(loc=0, scale=1).prob)
-
-      # Gaussian mixture source
-      def source_prob_(r):
-        return distrax.Normal(loc=0, scale=1).prob(r) * .3 + distrax.Normal(
-          loc=4, scale=1
-        ).prob(r) * .7
-
-      source_prob = jax.vmap(source_prob_)
-      target_prob = jax.vmap(distrax.Normal(loc=2, scale=1).prob)
-
-    else:
-      source_prob = jax.vmap(distrax.Normal(loc=0, scale=2).prob)
-      # target_prob is useless
-      target_prob = jax.vmap(distrax.Normal(loc=2, scale=1).prob)
-
-  elif FLAGS.dim == 2:
-    var1 = 1
-    var2 = 1
-    mu1 = jnp.array([-5, -5])
-    mu2 = jnp.array([5, 5])
-    # # linear transport calculation case
-    # source_prob = jax.vmap(partial(gaussian_2d, mean=mu1, var=jnp.eye(2)*var1))
-    # target_prob = jax.vmap(partial(gaussian_2d, mean=mu2, var=jnp.eye(2)*var2))
-    # multi-to-one case
-    source_prob = jax.vmap(
-      partial(gaussian_2d, mean=jnp.array([0.0, 0.0]), var=4 * jnp.eye(2))
+  source_prob = jax.vmap(
+    partial(
+      jax.scipy.stats.multivariate_normal.pdf, 
+      mean=jnp.zeros(FLAGS.dim), 
+      cov=4 * jnp.eye(FLAGS.dim)
     )
-    target_prob = jax.vmap(
-      partial(
-        gaussian_2d, 
-        mean=jnp.array([0.0, 0.0]), 
-        var=jnp.eye(2) * (jnp.exp(-2 * a * T) * (4 - 1/2/a) + 1 / 2 / a)
-      )
+  )
+  target_prob = jax.vmap(
+    partial(
+      jax.scipy.stats.multivariate_normal.pdf, 
+      mean=jnp.zeros(FLAGS.dim), 
+      cov=jnp.eye(FLAGS.dim) * (jnp.exp(-2 * a * T) * (4 - 1/2/a) + 1 / 2 / a),
     )
+  )
 
   # definition of loss functions
   @partial(jax.jit, static_argnames=["batch_size"])
@@ -194,7 +149,6 @@ def main(_):
     log_prob = model.apply.log_prob(params, samples, cond=fake_cond_)
     return -log_prob.mean()
   
-  # score-modified kinetic energy based on finite difference
   @partial(jax.jit, static_argnames=["batch_size"])
   def flow_matching_loss_fn(
     t: float, params: hk.Params, rng: PRNGKey, batch_size: int
@@ -244,19 +198,6 @@ def main(_):
       ) / t_batch_size
 
     return loss
-  
-  def potential_loss_fn(
-    params: hk.Params, rng: PRNGKey, cond, batch_size: int
-  ) -> Array:
-
-    fake_cond_ = np.ones((batch_size, 1)) * cond
-    samples, _ = model.apply.sample_and_log_prob(
-      params,
-      cond=fake_cond_,
-      seed=rng,
-      sample_shape=(batch_size, ),
-    )
-    return potential_fn(samples).mean()
 
   @jax.jit
   def update(params: hk.Params, rng: PRNGKey, lambda_,
@@ -271,7 +212,8 @@ def main(_):
   # training loop
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
-  lambda_ = 1000
+  lambda_ = 100
+  print(f"Solving Fokker-Planck equation in {FLAGS.dim}D...")
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, lambda_, opt_state)
@@ -280,31 +222,69 @@ def main(_):
 
     if step % FLAGS.eval_frequency == 0:
       terminal_loss = kl_loss_fn(params, rng, 1, FLAGS.batch_size)
-      desc_str = f"{loss=:.4e}|{terminal_loss:.4e}"
+      desc_str = f"{loss=:.4e}|{terminal_loss:.4e}|{lambda_:.1f}"
       iters.set_description_str(desc_str)
 
-  if FLAGS.dim == 2:
-    # this plot the distribution at t=0,1 after training
-    # as well as the error of the learned mapping at t=0, 1
-    # based on grid evaluation
-    plt.clf()
-    plt.plot(
-      jnp.linspace(5001, FLAGS.epochs, FLAGS.epochs - 5000),
-      jnp.array(loss_hist[5000:])
-    )
-    plt.savefig("results/fig/loss_hist.pdf")
+  plt.plot(
+    jnp.linspace(5001, FLAGS.epochs, FLAGS.epochs - 5000),
+    jnp.array(loss_hist[5000:])
+  )
+  plt.savefig("results/fig/loss_hist.pdf")
 
-    param_count = sum(x.size for x in jax.tree.leaves(params))
-    print("Network parameters: {}".format(param_count))
-    print(potential_loss_fn(params, rng, 1, FLAGS.batch_size))
-    breakpoint()
+  param_count = sum(x.size for x in jax.tree.leaves(params))
+  print("Network parameters: {}".format(param_count))
+  breakpoint()
+  
+  def rmse_mc_loss_fn(
+    params: hk.Params, rng: PRNGKey, cond, batch_size: int
+  ) -> Array:
+    """MSE between the normalizing flow and the reference distribution.
+    """
+
+    fake_cond_ = jnp.ones((batch_size, 1)) * cond
+    samples, log_prob = model.apply.sample_and_log_prob(
+      params,
+      cond=fake_cond_,
+      seed=rng,
+      sample_shape=(batch_size, ),
+    )
+    return jnp.sqrt((
+      (jnp.exp(log_prob) -
+        (source_prob(samples) * (1 - cond) + target_prob(samples) * cond))**2
+    ).mean())
+  print("L2 error via Monte-Carlo: {:.3e}".format(
+    rmse_mc_loss_fn(params, rng, 1, 1000000))
+  )
+
+  if FLAGS.dim == 2:
+      # calculating the MSE via grid is impossible in high dimension,
+    # currently only implements for 2d
+    def rmse_grid_loss_fn(
+      params: hk.Params, cond, grid_size: int
+    ) -> Array:
+      """MSE between the normalizing flow and the reference distribution.
+      """
+
+      fake_cond_ = jnp.ones(1) * cond
+      x_min = -5
+      x_max = 5
+      x = np.linspace(x_min, x_max, grid_size)
+      y = np.linspace(x_min, x_max, grid_size)
+      X, Y = np.meshgrid(x, y)
+      XY = jnp.hstack([X.reshape(-1, 1), Y.reshape(-1, 1)])
+      return jnp.sqrt((
+        (
+          jnp.exp(log_prob_fn(params, XY, fake_cond_)) -
+          (source_prob(XY) * (1 - cond) + target_prob(XY) * cond)
+        )**2
+      ).mean())
 
     r_ = jnp.vstack(
       [jnp.array([-1.0, -1.0]), jnp.array([-1.0, -0.0]),
-       jnp.array([-1.0, 1.0]), jnp.array([0.0, -1.0]),
-       jnp.array([0.0, 0.0]), jnp.array([0.0, 1.0]),
-       jnp.array([1.0, -1.0]), jnp.array([1.0, 0.0]),
-       jnp.array([1.0, 1.0])]
+        jnp.array([-1.0, 1.0]), jnp.array([0.0, -1.0]),
+        jnp.array([0.0, 0.0]), jnp.array([0.0, 1.0]),
+        jnp.array([1.0, -1.0]), jnp.array([1.0, 0.0]),
+        jnp.array([1.0, 1.0])]
     )
     r_ = r_ * 3
     t_array = jnp.linspace(0, T, 20)
@@ -316,7 +296,7 @@ def main(_):
       r_ = r_,
       t_array=t_array,
     )
-    breakpoint()
+    print("L2 error on grid: {:.3e}".format(rmse_grid_loss_fn(params, 1, 500)))
 
 
 if __name__ == "__main__":
