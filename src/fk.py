@@ -46,7 +46,7 @@ flags.DEFINE_enum(
 flags.DEFINE_boolean("use_64", True, "whether to use float64")
 flags.DEFINE_boolean("plot", False, "whether to plot resulting model density")
 
-flags.DEFINE_integer("dim", 3, "dimension of the base space")
+flags.DEFINE_integer("dim", 10, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
@@ -190,7 +190,7 @@ def main(_):
     """
 
     loss = lambda_ * kl_loss_fn(params, rng, 0, batch_size)
-    t_batch_size = 20  # 10
+    t_batch_size = 1
     t_batch = jax.random.uniform(rng, (t_batch_size, )) * T
     for t in t_batch:
       loss += flow_matching_loss_fn(
@@ -255,6 +255,7 @@ def main(_):
   print("L2 error via Monte-Carlo: {:.3e}".format(
     rmse_mc_loss_fn(params, rng, 1, 1000000))
   )
+  breakpoint()
 
   if FLAGS.dim == 2:
       # calculating the MSE via grid is impossible in high dimension,

@@ -2,6 +2,7 @@
 Wasserstein proximal operator ."""
 # TODO: code cleanup
 # the key and rng are used alternatively throughout the code
+# the name of the repo will be changed to cnf_ot
 from functools import partial
 from typing import Iterator, Optional, Tuple
 
@@ -48,23 +49,14 @@ flags.DEFINE_enum(
 flags.DEFINE_boolean("use_64", True, "whether to use float64")
 flags.DEFINE_boolean("plot", False, "whether to plot resulting model density")
 
-flags.DEFINE_integer("dim", 2, "dimension of the base space")
+flags.DEFINE_integer("dim", 10, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
 # parameter for rwpo exp
-T = 2
+T = 1
 beta = 1
-
-def gaussian_2d(
-  r: jnp.ndarray,
-  mean: jnp.ndarray = jnp.array([2, 3]),
-  var: jnp.ndarray = jnp.array([[2, .5], [.5, 1]])
-) -> jnp.ndarray:
-
-  return jnp.exp(
-    -0.5 * jnp.dot(jnp.dot((r - mean), jnp.linalg.inv(var)), (r - mean).T)
-  ) / jnp.sqrt(jnp.linalg.det(2 * jnp.pi * var))
+pot_mode = "quadratic" # quadratic, double-well
 
 
 # test the gaussian source
@@ -89,7 +81,13 @@ def sample_target_fn(
 
 
 def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
-  return jnp.sum(r**2, axis=1) / 2
+  # quadratic potential
+  if pot_mode == "quadratic":
+    return jnp.sum(r**2, axis=1) / 2
+  # double-well potential
+  elif pot_mode == "double-well":
+    return (jnp.linalg.norm(r - jnp.ones(FLAGS.dim).reshape(1, -1), axis=1) *
+      jnp.linalg.norm(r + jnp.ones(FLAGS.dim).reshape(1, -1), axis=1) / 2) ** 2
 
 
 def main(_):
@@ -114,49 +112,23 @@ def main(_):
   log_prob_fn = jax.jit(model.apply.log_prob)
   key, rng = jax.random.split(rng)
   params = model.init(key, np.zeros((1, FLAGS.dim)), np.zeros((1, )))
-  print(params.keys())
-
   opt_state = optimizer.init(params)
 
   # boundary condition on density
-  if FLAGS.dim == 1:
-    if FLAGS.case == "density fit":
-      # Gaussian source
-      # source_prob = jax.vmap(distrax.Normal(loc=0, scale=1).prob)
-
-      # Gaussian mixture source
-      def source_prob_(r):
-        return distrax.Normal(loc=0, scale=1).prob(r) * .3 + distrax.Normal(
-          loc=4, scale=1
-        ).prob(r) * .7
-
-      source_prob = jax.vmap(source_prob_)
-      target_prob = jax.vmap(distrax.Normal(loc=2, scale=1).prob)
-
-    else:
-      source_prob = jax.vmap(distrax.Normal(loc=0, scale=2).prob)
-      # target_prob is useless
-      target_prob = jax.vmap(distrax.Normal(loc=2, scale=1).prob)
-
-  elif FLAGS.dim == 2:
-    var1 = 1
-    var2 = 1
-    mu1 = jnp.array([-5, -5])
-    mu2 = jnp.array([5, 5])
-    # # linear transport calculation case
-    # source_prob = jax.vmap(partial(gaussian_2d, mean=mu1, var=jnp.eye(2)*var1))
-    # target_prob = jax.vmap(partial(gaussian_2d, mean=mu2, var=jnp.eye(2)*var2))
-    # multi-to-one case
-    source_prob = jax.vmap(
-      partial(
-        gaussian_2d,
-        mean=jnp.array([0.0, 0.0]),
-        var=2 * jnp.eye(2) / beta * (T + 1)
-      )
+  source_prob = jax.vmap(
+    partial(
+      jax.scipy.stats.multivariate_normal.pdf, 
+      mean=jnp.zeros(FLAGS.dim), 
+      cov=jnp.eye(FLAGS.dim) * 2 / beta * (T + 1)
     )
-    target_prob = jax.vmap(
-      partial(gaussian_2d, mean=jnp.array([0, 0]), var=jnp.eye(2) * var2)
+  )
+  target_prob = jax.vmap(
+    partial(
+      jax.scipy.stats.multivariate_normal.pdf, 
+      mean=jnp.zeros(FLAGS.dim), 
+      cov=jnp.eye(FLAGS.dim) * 2 / beta,
     )
+  )
 
   # definition of loss functions
   # @partial(jax.jit, static_argnames=["batch_size"])
@@ -314,7 +286,7 @@ def main(_):
 
     loss = lambda_ * kl_loss_fn(params, rng, 0, batch_size) \
       + potential_loss_fn(params, rng, T, batch_size)
-    t_batch_size = 20  # 10
+    t_batch_size = 1
     t_batch = jax.random.uniform(rng, (t_batch_size, )) * T
     for t in t_batch:
       loss += kinetic_with_score_loss_fn(
@@ -336,7 +308,8 @@ def main(_):
   # training loop
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
-  lambda_ = 5000
+  lambda_ = 200
+  print(f"Solving regularized Wasserstein proximal in {FLAGS.dim}D...")
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, lambda_, opt_state)
@@ -361,34 +334,35 @@ def main(_):
 
       iters.set_description_str(desc_str)
 
+  plt.plot(
+    jnp.linspace(5001, FLAGS.epochs, FLAGS.epochs - 5000),
+    jnp.array(loss_hist[5000:])
+  )
+  plt.savefig("results/fig/loss_hist.pdf")
+  param_count = sum(x.size for x in jax.tree.leaves(params))
+  print("Network parameters: {}".format(param_count))
+  e_kin = T * utils.calc_score_kinetic_energy(
+    sample_fn,
+    log_prob_fn,
+    params,
+    T,
+    beta,
+    FLAGS.dim,
+    rng,
+  )
+  e_pot = potential_loss_fn(params, rng, T, 65536)
+  print("kinetic energy: ", e_kin)
+  print("potential energy: ", e_pot)
+  # NOTE: this is the true value for quadratic potential and Gaussian IC
+  true_val = FLAGS.dim * (1 + jnp.log(T + 1)) / beta
+  print("total energy: {:.3f}|relative err: {:.3e}".format(
+    e_kin + e_pot, (e_kin + e_pot - true_val) / true_val * 100
+  ))
+  breakpoint()
   if FLAGS.dim == 2:
     # this plot the distribution at t=0,1 after training
     # as well as the error of the learned mapping at t=0, 1
     # based on grid evaluation
-    plt.clf()
-    plt.plot(
-      jnp.linspace(5001, FLAGS.epochs, FLAGS.epochs - 5000),
-      jnp.array(loss_hist[5000:])
-    )
-    plt.savefig("results/fig/loss_hist.pdf")
-    param_count = sum(x.size for x in jax.tree.leaves(params))
-    print("Network parameters: {}".format(param_count))
-    e_kin = T * utils.calc_score_kinetic_energy(
-      sample_fn,
-      log_prob_fn,
-      params,
-      T,
-      beta,
-      FLAGS.dim,
-      rng,
-    )
-    e_pot = potential_loss_fn(params, rng, T, 65536)
-    print("kinetic energy: ", e_kin)
-    print("potential energy: ", e_pot)
-    true_val = 2 * (1 + jnp.log(T + 1)) / beta
-    print("total energy: {:.3f}|relative err: {:.3e}".format(
-      e_kin + e_pot, (e_kin + e_pot - true_val) / true_val * 100
-    ))
 
     r_ = jnp.vstack(
       [jnp.array([-1.0, -1.0]), jnp.array([-1.0, -0.0]),
@@ -410,7 +384,6 @@ def main(_):
       r_ = r_,
       t_array=t_array,
     )
-    breakpoint()
 
   # plot the 1D rwpo example：
   # plot the histogram w.r.t. the ground truth solution

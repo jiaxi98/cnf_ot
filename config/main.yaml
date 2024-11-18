@@ -3,12 +3,25 @@ hydra:
   run:
     dir: .
 
-defaults:
-  - process: process1
-  - model: model1
-  - _self_
+general:
+  dim: 10
+  case: ot # ot, rwpo, fk
+  seed: 42
 
-data:
-  raw: data/raw/sample.csv
-  processed: data/processed/processed.csv
-  final: data/final/final.csv
+ot:
+
+rwpo:
+  T: 1
+  beta: 1
+  pot_mode: quadratic # quadratic, double-well
+
+fk:
+  T: 1
+  a: 1 # drift coeff
+  sigma: 1/2
+
+train:
+  epochs: 30000
+  lr: 0.001
+  batch_size: 2048
+  t_batch_size: 1

@@ -11,5 +11,6 @@ pyvenv.cfg
 */.coverage
 */.coverage.*
 
+results
 data
 share
