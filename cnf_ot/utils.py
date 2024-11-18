@@ -77,11 +77,11 @@ def calc_score_kinetic_energy(
     dx = 0.01
     for i in range(dim):
       dr = jnp.zeros((1, dim))
-      dr = dr.at[0, i].set(dx/2)
+      dr = dr.at[0, i].set(dx / 2)
       log_p1 = log_prob_fn(params, r3 + dr, cond=jnp.ones(1) * t)
       log_p2 = log_prob_fn(params, r3 - dr, cond=jnp.ones(1) * t)
       score = score.at[:, i].set((log_p1 - log_p2) / dx)
-    velocity += score/beta
+    velocity += score / beta
     plt.quiver
     e_kin += jnp.mean(velocity**2) / 2
 
@@ -93,7 +93,7 @@ def plot_score(
   params: hk.Params,
   r_: jnp.array,
 ):
-  
+
   plt.clf()
   fig, ax = plt.subplots(1, 1, figsize=(5, 5))
   # axs = axs.flatten()
@@ -113,19 +113,17 @@ def plot_score(
     dx = 0.01
     for i in range(dim):
       dr = jnp.zeros((1, dim))
-      dr = dr.at[0, i].set(dx/2)
+      dr = dr.at[0, i].set(dx / 2)
       log_p1 = log_prob_fn(params, r_ + dr, cond=jnp.ones(1) * 0)
       log_p2 = log_prob_fn(params, r_ - dr, cond=jnp.ones(1) * 0)
       score = score.at[:, i].set((log_p1 - log_p2) / dx)
 
     ax.quiver(
-      (r_[:, 0]+x_max)/2/x_max*100,
-      (r_[:, 1]+x_max)/2/x_max*100,
-      score[:, 0],
-      score[:, 1]
+      (r_[:, 0] + x_max) / 2 / x_max * 100,
+      (r_[:, 1] + x_max) / 2 / x_max * 100, score[:, 0], score[:, 1]
     )
     ax.axis("off")
-  
+
   fig.tight_layout(pad=0.2)
   # plt.subplots_adjust(hspace=0.1)
   plt.savefig("results/fig/score.pdf")
@@ -222,7 +220,7 @@ def plot_samples_snapshot(
 def plot_density_snapshot(
   log_prob_fn: callable,
   params: hk.Params,
-  t_array = jnp.linspace(0, 1, 10),
+  t_array=jnp.linspace(0, 1, 10),
 ):
 
   plt.clf()
@@ -254,7 +252,7 @@ def plot_density_and_trajectory(
   r_: jnp.array,
   t_array: jnp.array,
 ):
-  
+
   plt.clf()
   fig, axs = plt.subplots(2, 5, figsize=(5, 2))
   axs = axs.flatten()
@@ -273,14 +271,14 @@ def plot_density_and_trajectory(
     for t in t_array:
       r_ = forward_fn(params, xi, jnp.ones(1) * t)
       axs[i].scatter(
-        (r_[:, 0]+x_max)/2/x_max*100, 
-        (r_[:, 1]+x_max)/2/x_max*100, 
+        (r_[:, 0] + x_max) / 2 / x_max * 100,
+        (r_[:, 1] + x_max) / 2 / x_max * 100,
         c="red",
         marker='.',
         s=.1
       )
     axs[i].axis("off")
-  
+
   fig.tight_layout(pad=0.2)
   # plt.subplots_adjust(hspace=0.1)
   plt.savefig("results/fig/traj.pdf")

@@ -51,8 +51,9 @@ flags.DEFINE_integer("dim", 10, "dimension of the base space")
 FLAGS = flags.FLAGS
 
 T = 1
-a = 1 # drift coeff
-sigma = 1/2 # diffusion coeff sigma = D^2/2
+a = 1  # drift coeff
+sigma = 1 / 2  # diffusion coeff sigma = D^2/2
+
 
 def sample_g_source_fn(
   seed: PRNGKey,
@@ -62,8 +63,9 @@ def sample_g_source_fn(
   According to the exact solution from LQR, the initial condition is given by 
   rho_0 \sim N(0, 2(T+1)I), we let T=1 here so the variance is 4.
   """
-  
+
   return jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) * 2
+
 
 def sample_target_fn(
   seed: PRNGKey,
@@ -71,6 +73,7 @@ def sample_target_fn(
 ):
 
   return jax.random.normal(seed, shape=(sample_shape, FLAGS.dim))
+
 
 def main(_):
 
@@ -99,16 +102,17 @@ def main(_):
   # boundary condition on density
   source_prob = jax.vmap(
     partial(
-      jax.scipy.stats.multivariate_normal.pdf, 
-      mean=jnp.zeros(FLAGS.dim), 
+      jax.scipy.stats.multivariate_normal.pdf,
+      mean=jnp.zeros(FLAGS.dim),
       cov=4 * jnp.eye(FLAGS.dim)
     )
   )
   target_prob = jax.vmap(
     partial(
-      jax.scipy.stats.multivariate_normal.pdf, 
-      mean=jnp.zeros(FLAGS.dim), 
-      cov=jnp.eye(FLAGS.dim) * (jnp.exp(-2 * a * T) * (4 - 1/2/a) + 1 / 2 / a),
+      jax.scipy.stats.multivariate_normal.pdf,
+      mean=jnp.zeros(FLAGS.dim),
+      cov=jnp.eye(FLAGS.dim) *
+      (jnp.exp(-2 * a * T) * (4 - 1 / 2 / a) + 1 / 2 / a),
     )
   )
 
@@ -129,8 +133,9 @@ def main(_):
       sample_shape=(batch_size, ),
     )
     return (
-      log_prob -
-      jnp.log(source_prob(samples) * (T - cond)/T + target_prob(samples) * cond/T)
+      log_prob - jnp.log(
+        source_prob(samples) * (T - cond) / T + target_prob(samples) * cond / T
+      )
     ).mean()
 
   @partial(jax.jit, static_argnames=["batch_size"])
@@ -144,11 +149,11 @@ def main(_):
 
     samples1 = sample_g_source_fn(seed=rng, sample_shape=batch_size)
     samples2 = sample_target_fn(seed=rng, sample_shape=batch_size)
-    samples = samples1 * (T - cond)/T + samples2 * cond/T
+    samples = samples1 * (T - cond) / T + samples2 * cond / T
     fake_cond_ = np.ones((1, )) * cond
     log_prob = model.apply.log_prob(params, samples, cond=fake_cond_)
     return -log_prob.mean()
-  
+
   @partial(jax.jit, static_argnames=["batch_size"])
   def flow_matching_loss_fn(
     t: float, params: hk.Params, rng: PRNGKey, batch_size: int
@@ -174,7 +179,7 @@ def main(_):
     dx = 0.01
     for i in range(FLAGS.dim):
       dr = jnp.zeros((1, FLAGS.dim))
-      dr = dr.at[0, i].set(dx/2)
+      dr = dr.at[0, i].set(dx / 2)
       log_p1 = log_prob_fn(params, r3 + dr, cond=jnp.ones(1) * t)
       log_p2 = log_prob_fn(params, r3 - dr, cond=jnp.ones(1) * t)
       score = score.at[:, i].set((log_p1 - log_p2) / dx)
@@ -234,7 +239,7 @@ def main(_):
   param_count = sum(x.size for x in jax.tree.leaves(params))
   print("Network parameters: {}".format(param_count))
   breakpoint()
-  
+
   def rmse_mc_loss_fn(
     params: hk.Params, rng: PRNGKey, cond, batch_size: int
   ) -> Array:
@@ -248,21 +253,26 @@ def main(_):
       seed=rng,
       sample_shape=(batch_size, ),
     )
-    return jnp.sqrt((
-      (jnp.exp(log_prob) -
-        (source_prob(samples) * (1 - cond) + target_prob(samples) * cond))**2
-    ).mean())
-  print("L2 error via Monte-Carlo: {:.3e}".format(
-    rmse_mc_loss_fn(params, rng, 1, 1000000))
+    return jnp.sqrt(
+      (
+        (
+          jnp.exp(log_prob) -
+          (source_prob(samples) * (1 - cond) + target_prob(samples) * cond)
+        )**2
+      ).mean()
+    )
+
+  print(
+    "L2 error via Monte-Carlo: {:.3e}".format(
+      rmse_mc_loss_fn(params, rng, 1, 1000000)
+    )
   )
   breakpoint()
 
   if FLAGS.dim == 2:
-      # calculating the MSE via grid is impossible in high dimension,
+    # calculating the MSE via grid is impossible in high dimension,
     # currently only implements for 2d
-    def rmse_grid_loss_fn(
-      params: hk.Params, cond, grid_size: int
-    ) -> Array:
+    def rmse_grid_loss_fn(params: hk.Params, cond, grid_size: int) -> Array:
       """MSE between the normalizing flow and the reference distribution.
       """
 
@@ -273,19 +283,27 @@ def main(_):
       y = np.linspace(x_min, x_max, grid_size)
       X, Y = np.meshgrid(x, y)
       XY = jnp.hstack([X.reshape(-1, 1), Y.reshape(-1, 1)])
-      return jnp.sqrt((
+      return jnp.sqrt(
         (
-          jnp.exp(log_prob_fn(params, XY, fake_cond_)) -
-          (source_prob(XY) * (1 - cond) + target_prob(XY) * cond)
-        )**2
-      ).mean())
+          (
+            jnp.exp(log_prob_fn(params, XY, fake_cond_)) -
+            (source_prob(XY) * (1 - cond) + target_prob(XY) * cond)
+          )**2
+        ).mean()
+      )
 
     r_ = jnp.vstack(
-      [jnp.array([-1.0, -1.0]), jnp.array([-1.0, -0.0]),
-        jnp.array([-1.0, 1.0]), jnp.array([0.0, -1.0]),
-        jnp.array([0.0, 0.0]), jnp.array([0.0, 1.0]),
-        jnp.array([1.0, -1.0]), jnp.array([1.0, 0.0]),
-        jnp.array([1.0, 1.0])]
+      [
+        jnp.array([-1.0, -1.0]),
+        jnp.array([-1.0, -0.0]),
+        jnp.array([-1.0, 1.0]),
+        jnp.array([0.0, -1.0]),
+        jnp.array([0.0, 0.0]),
+        jnp.array([0.0, 1.0]),
+        jnp.array([1.0, -1.0]),
+        jnp.array([1.0, 0.0]),
+        jnp.array([1.0, 1.0])
+      ]
     )
     r_ = r_ * 3
     t_array = jnp.linspace(0, T, 20)
@@ -294,7 +312,7 @@ def main(_):
       inverse_fn,
       log_prob_fn,
       params=params,
-      r_ = r_,
+      r_=r_,
       t_array=t_array,
     )
     print("L2 error on grid: {:.3e}".format(rmse_grid_loss_fn(params, 1, 500)))

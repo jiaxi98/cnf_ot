@@ -50,6 +50,7 @@ flags.DEFINE_integer("dim", 20, "dimension of the base space")
 FLAGS = flags.FLAGS
 T = 1
 
+
 def gaussian_2d(
   r: jnp.ndarray,
   mean: jnp.ndarray = jnp.array([2, 3]),
@@ -87,36 +88,32 @@ def sample_source_fn(
   )
   sample_ = jnp.zeros((8, sample_shape, dim))
   sample_ = sample_.at[0].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([0.0, R])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, R])
   )
   sample_ = sample_.at[1].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([R, 0.0])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0.0])
   )
   sample_ = sample_.at[2].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([0.0, -R])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, -R])
   )
   sample_ = sample_.at[3].set(
-    jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([-R, 0.0])
+    jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0.0])
   )
   sample_ = sample_.at[4].set(
     jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([0.6*R, 0.8*R])
+    jnp.array([0.6 * R, 0.8 * R])
   )
   sample_ = sample_.at[5].set(
     jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([0.6*R, -0.8*R])
+    jnp.array([0.6 * R, -0.8 * R])
   )
   sample_ = sample_.at[6].set(
     jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([-0.6*R, -0.8*R])
+    jnp.array([-0.6 * R, -0.8 * R])
   )
   sample_ = sample_.at[7].set(
     jax.random.normal(seed, shape=(sample_shape, dim)) +
-    jnp.array([-0.6*R, 0.8*R])
+    jnp.array([-0.6 * R, 0.8 * R])
   )
 
   sample = sample_[component_indices[jnp.arange(sample_shape)],
@@ -162,15 +159,15 @@ def main(_):
   # NOTE: need to simultaneous modified the sample_source_fn as well
   source_prob = jax.vmap(
     partial(
-      jax.scipy.stats.multivariate_normal.pdf, 
-      mean=jnp.ones(FLAGS.dim) * -3, 
+      jax.scipy.stats.multivariate_normal.pdf,
+      mean=jnp.ones(FLAGS.dim) * -3,
       cov=jnp.eye(FLAGS.dim)
     )
   )
   target_prob = jax.vmap(
     partial(
-      jax.scipy.stats.multivariate_normal.pdf, 
-      mean=jnp.ones(FLAGS.dim) * 3, 
+      jax.scipy.stats.multivariate_normal.pdf,
+      mean=jnp.ones(FLAGS.dim) * 3,
       cov=jnp.eye(FLAGS.dim)
     )
   )
@@ -205,8 +202,12 @@ def main(_):
     distribution.
     """
 
-    samples1 = sample_source_fn(dim=FLAGS.dim, seed=rng, sample_shape=batch_size)
-    samples2 = sample_target_fn(dim=FLAGS.dim, seed=rng, sample_shape=batch_size)
+    samples1 = sample_source_fn(
+      dim=FLAGS.dim, seed=rng, sample_shape=batch_size
+    )
+    samples2 = sample_target_fn(
+      dim=FLAGS.dim, seed=rng, sample_shape=batch_size
+    )
     samples = samples1 * (1 - cond) + samples2 * cond
     fake_cond_ = np.ones((1, )) * cond
     log_prob = model.apply.log_prob(params, samples, cond=fake_cond_)
@@ -264,7 +265,7 @@ def main(_):
     r2 = sample_fn(
       params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
     )
-    velocity = (r2 - r1) / dt     # velocity.shape = [batch_size, 2]
+    velocity = (r2 - r1) / dt  # velocity.shape = [batch_size, 2]
 
     return jnp.mean(velocity**2) * FLAGS.dim / 2
 
@@ -341,7 +342,7 @@ def main(_):
     for _ in range(t_batch_size):
       loss += kinetic_loss_fn(
         t_batch[_], params, rng, batch_size // 32
-      ) / t_batch_size  
+      ) / t_batch_size
       #+ acc_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
 
     return loss
@@ -366,7 +367,6 @@ def main(_):
     updates, new_opt_state = optimizer.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return loss, new_params, new_opt_state
-  
 
   # pretraining loop
   if False:
@@ -375,9 +375,7 @@ def main(_):
     iters = tqdm(range(FLAGS.epochs))
     for step in iters:
       key, rng = jax.random.split(rng)
-      loss, params, opt_state = pretrain_update(
-        params, key, lambda_, opt_state
-      )
+      loss, params, opt_state = pretrain_update(params, key, lambda_, opt_state)
       loss_hist.append(loss)
 
       if step % FLAGS.eval_frequency == 0:
@@ -403,10 +401,14 @@ def main(_):
   if False:
     batch_size = 64
     fake_cond_ = np.ones((batch_size, 1)) * 0.8
-    r1 = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+    r1 = sample_fn(
+      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+    )
     xi1 = inverse_fn(params, r1, jnp.ones(1) * .8)
     fake_cond_ = np.ones((batch_size, 1)) * 0.38
-    r2 = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
+    r2 = sample_fn(
+      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+    )
     xi2 = inverse_fn(params, r1, jnp.ones(1) * .38)
 
   # training loop
@@ -437,24 +439,18 @@ def main(_):
   param_count = sum(x.size for x in jax.tree.leaves(params))
   print("Network parameters: {}".format(param_count))
 
-  print("kinetic energy with more samples: ",
+  print(
+    "kinetic energy with more samples: ",
     utils.calc_kinetic_energy(
-      sample_fn,
-      params,
-      rng,
-      batch_size=65536,
-      t_size=10000,
-      dim=FLAGS.dim)
+      sample_fn, params, rng, batch_size=65536, t_size=10000, dim=FLAGS.dim
+    )
   )
 
-  print("kinetic energy with less samples: ",
+  print(
+    "kinetic energy with less samples: ",
     utils.calc_kinetic_energy(
-      sample_fn,
-      params,
-      rng,
-      batch_size=4096,
-      t_size=1000,
-      dim=FLAGS.dim)
+      sample_fn, params, rng, batch_size=4096, t_size=1000, dim=FLAGS.dim
+    )
   )
   breakpoint()
 
@@ -493,11 +489,17 @@ def main(_):
     #   jnp.array([-0.6*R, 0.8*R]), jnp.array([-0.6*R, -0.8*R])])
 
     r_ = jnp.vstack(
-      [jnp.array([-2.0, -2.0]), jnp.array([-2.0, -3.0]),
-       jnp.array([-2.0, -4.0]), jnp.array([-3.0, -2.0]),
-       jnp.array([-3.0, -3.0]), jnp.array([-3.0, -4.0]),
-       jnp.array([-4.0, -2.0]), jnp.array([-4.0, -3.0]),
-       jnp.array([-4.0, -4.0])]
+      [
+        jnp.array([-2.0, -2.0]),
+        jnp.array([-2.0, -3.0]),
+        jnp.array([-2.0, -4.0]),
+        jnp.array([-3.0, -2.0]),
+        jnp.array([-3.0, -3.0]),
+        jnp.array([-3.0, -4.0]),
+        jnp.array([-4.0, -2.0]),
+        jnp.array([-4.0, -3.0]),
+        jnp.array([-4.0, -4.0])
+      ]
     )
     t_array = jnp.linspace(0, T, 20)
     utils.plot_density_and_trajectory(
@@ -505,7 +507,7 @@ def main(_):
       inverse_fn,
       log_prob_fn,
       params=params,
-      r_ = r_,
+      r_=r_,
       t_array=t_array,
     )
 

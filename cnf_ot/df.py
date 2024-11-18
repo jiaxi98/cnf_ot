@@ -100,6 +100,7 @@ def prob_fn1_(r: jnp.ndarray, ) -> jnp.ndarray:
 #                    jnp.arange(sample_shape)]
 #   return sample
 
+
 def sample_fn1(
   seed: PRNGKey,
   sample_shape,
@@ -107,6 +108,7 @@ def sample_fn1(
   """t=1"""
 
   return jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) * 3
+
 
 def prob_fn2_(r: jnp.ndarray, ) -> jnp.ndarray:
   """t=1"""
@@ -166,16 +168,20 @@ def sample_fn3(
   )
   sample_ = jnp.zeros((4, sample_shape, FLAGS.dim))
   sample_ = sample_.at[0].set(
-    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([0.0, R])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) +
+    jnp.array([0.0, R])
   )
   sample_ = sample_.at[1].set(
-    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([R, 0.0])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) +
+    jnp.array([R, 0.0])
   )
   sample_ = sample_.at[2].set(
-    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([0.0, -R])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) +
+    jnp.array([0.0, -R])
   )
   sample_ = sample_.at[3].set(
-    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([-R, 0.0])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) +
+    jnp.array([-R, 0.0])
   )
 
   sample = sample_[component_indices[jnp.arange(sample_shape)],
@@ -207,16 +213,20 @@ def sample_fn4(
   )
   sample_ = jnp.zeros((4, sample_shape, FLAGS.dim))
   sample_ = sample_.at[0].set(
-    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([0.0, R])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) +
+    jnp.array([0.0, R])
   )
   sample_ = sample_.at[1].set(
-    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([R, 0.0])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) +
+    jnp.array([R, 0.0])
   )
   sample_ = sample_.at[2].set(
-    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([0.0, -R])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) +
+    jnp.array([0.0, -R])
   )
   sample_ = sample_.at[3].set(
-    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([-R, 0.0])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) +
+    jnp.array([-R, 0.0])
   )
 
   sample = sample_[component_indices[jnp.arange(sample_shape)],
@@ -248,16 +258,20 @@ def sample_fn5(
   )
   sample_ = jnp.zeros((4, sample_shape, FLAGS.dim))
   sample_ = sample_.at[0].set(
-    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([0.0, R])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) +
+    jnp.array([0.0, R])
   )
   sample_ = sample_.at[1].set(
-    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([R, 0.0])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) +
+    jnp.array([R, 0.0])
   )
   sample_ = sample_.at[2].set(
-    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([0.0, -R])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) +
+    jnp.array([0.0, -R])
   )
   sample_ = sample_.at[3].set(
-    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) + jnp.array([-R, 0.0])
+    jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) +
+    jnp.array([-R, 0.0])
   )
 
   sample = sample_[component_indices[jnp.arange(sample_shape)],
@@ -353,6 +367,7 @@ def main(_):
     samples = samples1*(1-cond)*(0.5-cond)*(0.75-cond)*(0.25-cond)*32/3 \
       + samples2*cond*(cond-0.5)*(cond-0.75)*(cond-0.25)*32/3 \
     # samples = samples1*(1-cond)*(0.5-cond)*(0.75-cond)*(0.25-cond)*32/3 \
+
     #   + samples2*cond*(cond-0.5)*(cond-0.75)*(cond-0.25)*32/3 \
     #   + samples3*cond*(1-cond)*(0.75-cond)*(cond-0.25)*64 \
     #   + samples4*cond*(1-cond)*(0.75-cond)*(0.5-cond)*128/3 \
@@ -408,9 +423,9 @@ def main(_):
 
     return reverse_kl_loss_fn(params, rng, 0, batch_size) \
       + reverse_kl_loss_fn(params, rng, 1, batch_size) # \
-      # + reverse_kl_loss_fn(params, rng, .5, batch_size) \
-      # + reverse_kl_loss_fn(params, rng, .25, batch_size) \
-      # + reverse_kl_loss_fn(params, rng, .75, batch_size)
+    # + reverse_kl_loss_fn(params, rng, .5, batch_size) \
+    # + reverse_kl_loss_fn(params, rng, .25, batch_size) \
+    # + reverse_kl_loss_fn(params, rng, .75, batch_size)
 
   @jax.jit
   def update(params: hk.Params, rng: PRNGKey, lambda_,
