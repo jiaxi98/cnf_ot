@@ -3,10 +3,10 @@ equation."""
 from functools import partial
 from typing import Iterator, Optional, Tuple
 
+import distrax
 import haiku as hk
 import jax
 import jax.numpy as jnp
-import distrax
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,9 +16,9 @@ from absl import app, flags, logging
 from jaxtyping import Array
 from tqdm import tqdm
 
-from src.flows import RQSFlow
-from src.types import Batch, OptState, PRNGKey
-import src.utils as utils
+import cnf_ot.utils as utils
+from cnf_ot.flows import RQSFlow
+from cnf_ot.types import Batch, OptState, PRNGKey
 
 flags.DEFINE_integer(
   "flow_num_layers", 2, "Number of layers to use in the flow."

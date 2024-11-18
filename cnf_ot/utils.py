@@ -1,14 +1,14 @@
 from functools import partial
 
+import haiku as hk
 import jax
 import jax.numpy as jnp
 import matplotlib.colors as mcolors
 import numpy as np
-import haiku as hk
 from matplotlib import cm
 from matplotlib import pyplot as plt
 
-from src.types import Batch, OptState, PRNGKey
+from cnf_ot.types import Batch, OptState, PRNGKey
 
 
 def calc_kinetic_energy(
@@ -352,5 +352,4 @@ def plot_1d_map(
     ax1[i // 2, i % 2].plot(x_axis, true_y, "r")
     i += 1
   plt.savefig("results/fig/mapping_1d.pdf")
-  # plt.clf()
   plt.show()

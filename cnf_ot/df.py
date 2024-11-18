@@ -5,7 +5,6 @@ from typing import Iterator, Optional, Tuple
 import haiku as hk
 import jax
 import jax.numpy as jnp
-import distrax
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,9 +14,9 @@ from absl import app, flags, logging
 from jaxtyping import Array
 from tqdm import tqdm
 
-from src.flows import RQSFlow
-from src.types import Batch, OptState, PRNGKey
-import src.utils as utils
+import cnf_ot.utils as utils
+from cnf_ot.flows import RQSFlow
+from cnf_ot.types import Batch, OptState, PRNGKey
 
 flags.DEFINE_integer(
   "flow_num_layers", 2, "Number of layers to use in the flow."
@@ -594,40 +593,6 @@ def main(_):
 
     param_count = sum(x.size for x in jax.tree.leaves(params))
     print("Network parameters: {}".format(param_count))
-    # print("kinetic energy: ",
-    #   utils.calc_kinetic_energy(
-    #     sample_fn,
-    #     forward_fn,
-    #     inverse_fn,
-    #     params,
-    #     rng,
-    #     dim=FLAGS.dim)
-    # )
-
-    # print("kl loss: ",
-    #   kl_loss_fn(params, rng, cond=0, FLAGS.batch_size))
-
-  #   def kinetic_loss_fn(t: float, params: hk.Params, rng: PRNGKey, batch_size: int) -> Array:
-  #     """Kinetic energy along the trajectory at time t, notice that this contains not only the velocity but also
-  #     the score function
-  #     """
-  #     fake_cond_ = np.ones((batch_size, 1)) * t
-  #     samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_)
-  #     xi = inverse_fn(params, samples, fake_cond_)
-  #     velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)[jnp.arange(batch_size),:,jnp.arange(batch_size),0] \
-  #       + jax.jacfwd(partial(log_prob_fn, params, cond=fake_cond_))(samples)[jnp.arange(batch_size),jnp.arange(batch_size)]/beta
-  #       # - jax.vmap(jax.grad(partial(log_prob_fn, params, cond=fake_cond_)))(samples)/beta
-  #     # velocity.shape = [batch_size, DIM, batch_size, 1]
-  #     # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
-  #     return jnp.mean(velocity**2) * FLAGS.dim / 2
-
-  #   batch_size = FLAGS.batch_size
-  #   loss = potential_loss_fn(params, rng, 1, batch_size)
-  #   t_batch_size = 100 # 10
-  #   t_batch = jax.random.uniform(rng, (t_batch_size, ))
-  #   for _ in range(t_batch_size):
-  #       loss += kinetic_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
-  #   print("loss: {:.4f}".format(loss))
 
 
 if __name__ == "__main__":
