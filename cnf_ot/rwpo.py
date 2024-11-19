@@ -14,6 +14,7 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
+import pickle
 import tensorflow_datasets as tfds
 from absl import app, flags, logging
 from jaxtyping import Array
@@ -49,13 +50,14 @@ flags.DEFINE_enum(
 flags.DEFINE_boolean("use_64", True, "whether to use float64")
 flags.DEFINE_boolean("plot", False, "whether to plot resulting model density")
 
-flags.DEFINE_integer("dim", 10, "dimension of the base space")
+flags.DEFINE_integer("dim", 2, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 
 # parameter for rwpo exp
 T = 1
-beta = 1
+beta = .5
+a = 1
 pot_mode = "quadratic"  # quadratic, double-well
 
 
@@ -87,8 +89,8 @@ def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
   # double-well potential
   elif pot_mode == "double-well":
     return (
-      jnp.linalg.norm(r - jnp.ones(FLAGS.dim).reshape(1, -1), axis=1) *
-      jnp.linalg.norm(r + jnp.ones(FLAGS.dim).reshape(1, -1), axis=1) / 2
+      jnp.linalg.norm(r - a * jnp.ones(FLAGS.dim).reshape(1, -1), axis=1) *
+      jnp.linalg.norm(r + a * jnp.ones(FLAGS.dim).reshape(1, -1), axis=1) / 2
     )**2
 
 
@@ -311,7 +313,7 @@ def main(_):
   # training loop
   loss_hist = []
   iters = tqdm(range(FLAGS.epochs))
-  lambda_ = 200
+  lambda_ = 5000
   print(f"Solving regularized Wasserstein proximal in {FLAGS.dim}D...")
   for step in iters:
     key, rng = jax.random.split(rng)
@@ -356,14 +358,59 @@ def main(_):
   e_pot = potential_loss_fn(params, rng, T, 65536)
   print("kinetic energy: ", e_kin)
   print("potential energy: ", e_pot)
-  # NOTE: this is the true value for quadratic potential and Gaussian IC
-  true_val = FLAGS.dim * (1 + jnp.log(T + 1)) / beta
+
+  if pot_mode == "quadratic":
+    # NOTE: this is the true value for quadratic potential and Gaussian IC
+    true_val = FLAGS.dim * (1 + jnp.log(T + 1)) / beta
+  elif pot_mode == "double-well":
+    if a == 0.5:
+      file_name = 'data/fcn4a5_interp.pkl'
+    elif a == 1.0:
+      file_name = 'data/fcn4a1_interp.pkl'
+    with open(file_name, 'rb') as f:
+      interpolators = pickle.load(f)
+      target_prob = interpolators['rhoT_interp']
+    
+    x_min = -2
+    x_max = 2
+    x = np.linspace(x_min, x_max, 100)
+    y = np.linspace(x_min, x_max, 100)
+    X, Y = np.meshgrid(x, y)
+    XY = jnp.hstack([X.reshape(100**2, 1), Y.reshape(100**2, 1)])
+
+    def cost_rwpo(rng: PRNGKey, x_batch: int, y_batch: int):
+      """calculate the cost of the rwpo"""
+
+      rng, key = jax.random.split(rng)
+      x = jax.random.normal(rng, shape=(x_batch, 2)) *\
+        jnp.sqrt(2 / beta * (T + 1))
+      y = jax.random.normal(key, shape=(x_batch, y_batch, 2)) *\
+        jnp.sqrt(2 / beta * T) + x.reshape(-1, 1, 2)
+      return -2 / beta * jnp.log(
+        jnp.exp(
+          potential_fn(y.reshape(-1, 2)).reshape((x_batch, y_batch)) *\
+          -beta / 2
+        ).mean(axis=1)
+      ).mean()
+
+    fake_cond_ = np.ones((1, ))
+    prob1 = jnp.exp(log_prob_fn(params, XY, cond=fake_cond_))
+    prob2 = target_prob(XY)
+    print(jnp.sum((prob1 - prob2)**2))
+    plt.figure(figsize=(4,2))
+    plt.subplot(121)
+    plt.imshow(prob1.reshape(100, 100))
+    plt.subplot(122)
+    plt.imshow(prob2.reshape(100, 100))
+    plt.savefig("results/fig/double-well.pdf")
+    true_val = cost_rwpo(rng, 100, 1000)
   print(
     "total energy: {:.3f}|relative err: {:.3e}".format(
       e_kin + e_pot, (e_kin + e_pot - true_val) / true_val * 100
     )
   )
   breakpoint()
+
   if FLAGS.dim == 2:
     # this plot the distribution at t=0,1 after training
     # as well as the error of the learned mapping at t=0, 1
