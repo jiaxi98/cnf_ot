@@ -4,8 +4,11 @@ hydra:
     dir: .
 
 general:
-  dim: 10
-  case: ot # ot, rwpo, fk
+  type: rwpo # ot, rwpo, fp
+  dim: 2
+  dx: 0.01
+  dt: 0.01
+  t_batch_size: 10
   seed: 42
 
 ot:
@@ -13,15 +16,23 @@ ot:
 rwpo:
   T: 1
   beta: 1
-  pot_mode: quadratic # quadratic, double-well
+  a: 1
+  pot_mode: double-well # quadratic, double-well
 
-fk:
+fp:
   T: 1
   a: 1 # drift coeff
   sigma: 1/2
+
+cnf:
+  flow_num_layers: 2
+  mlp_num_layers: 2
+  hidden_size: 16
+  num_bins: 5
 
 train:
   epochs: 30000
   lr: 0.001
   batch_size: 2048
-  t_batch_size: 1
+  test_batch_size: 2000
+  eval_frequency: 100

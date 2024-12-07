@@ -4,109 +4,60 @@ Wasserstein proximal operator ."""
 # the key and rng are used alternatively throughout the code
 # the name of the repo will be changed to cnf_ot
 from functools import partial
-from typing import Iterator, Optional, Tuple
+from typing import Tuple
 
 import distrax
 import haiku as hk
 import jax
 import jax.numpy as jnp
-import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+import ml_collections
 import numpy as np
 import optax
 import pickle
-import tensorflow_datasets as tfds
-from absl import app, flags, logging
+import yaml
+from box import Box
 from jaxtyping import Array
 from tqdm import tqdm
 
 import cnf_ot.utils as utils
 from cnf_ot.flows import RQSFlow
-from cnf_ot.types import Batch, OptState, PRNGKey
+from cnf_ot.types import OptState, PRNGKey
 
-flags.DEFINE_integer(
-  "flow_num_layers", 2, "Number of layers to use in the flow."
-)
-flags.DEFINE_integer(
-  "mlp_num_layers", 2, "Number of layers to use in the MLP conditioner."
-)  # 2
-flags.DEFINE_integer(
-  "hidden_size", 16, "Hidden size of the MLP conditioner."
-)  # 64
-flags.DEFINE_integer(
-  "num_bins", 5, "Number of bins to use in the rational-quadratic spline."
-)  # 20
-flags.DEFINE_integer("batch_size", 2048, "Batch size for training.")
-flags.DEFINE_integer("test_batch_size", 20000, "Batch size for evaluation.")
-flags.DEFINE_float("lr", 1e-3, "Learning rate for the optimizer.")
-flags.DEFINE_integer("epochs", 30000, "Number of training steps to run.")
-flags.DEFINE_integer("eval_frequency", 100, "How often to evaluate the model.")
-flags.DEFINE_integer("seed", 42, "random seed.")
-
-flags.DEFINE_enum(
-  "case", "rwpo", ["density fit", "wasserstein", "rwpo"], "problem type"
-)
-
-flags.DEFINE_boolean("use_64", True, "whether to use float64")
-flags.DEFINE_boolean("plot", False, "whether to plot resulting model density")
-
-flags.DEFINE_integer("dim", 2, "dimension of the base space")
-
-FLAGS = flags.FLAGS
-
-# parameter for rwpo exp
-T = 1
-beta = .5
-a = 1
-pot_mode = "quadratic"  # quadratic, double-well
+jax.config.update("jax_enable_x64", True)
 
 
-# test the gaussian source
-def sample_g_source_fn(
-  seed: PRNGKey,
-  sample_shape,
-):
-  """
-  According to the exact solution from LQR, the initial condition is given by 
-  rho_0 \sim N(0, 2(T+1)I), we let T=1 here so the variance is 4.
-  """
-
-  return jax.random.normal(seed, shape=(sample_shape, FLAGS.dim)) * 2
-
-
-def sample_target_fn(
-  seed: PRNGKey,
-  sample_shape,
-):
-
-  return jax.random.normal(seed, shape=(sample_shape, FLAGS.dim))
-
-
-def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
-  # quadratic potential
-  if pot_mode == "quadratic":
-    return jnp.sum(r**2, axis=1) / 2
-  # double-well potential
-  elif pot_mode == "double-well":
-    return (
-      jnp.linalg.norm(r - a * jnp.ones(FLAGS.dim).reshape(1, -1), axis=1) *
-      jnp.linalg.norm(r + a * jnp.ones(FLAGS.dim).reshape(1, -1), axis=1) / 2
-    )**2
-
-
-def main(_):
+def main(config_dict: ml_collections.ConfigDict):
 
   # model initialization
-  jax.config.update("jax_enable_x64", FLAGS.use_64)
-  np.random.seed(FLAGS.seed)
-  rng = jax.random.PRNGKey(FLAGS.seed)
-  optimizer = optax.adam(FLAGS.lr)
+  config = Box(config_dict)
+  _type = config.general.type
+  dim = config.general.dim
+  dt = config.general.dt  # dt for calculating velocity using finite difference
+  dx = config.general.dx  # dx for calculating score using finite difference
+  t_batch_size = config.general.t_batch_size
+  rng = jax.random.PRNGKey(config.general.seed)
+  epochs = config.train.epochs
+  batch_size = config.train.batch_size
+  test_batch_size = config.train.test_batch_size
+  eval_frequency = config.train.eval_frequency
+  
+  if _type == "rwpo":
+    pot_mode = config.rwpo.pot_mode
+    T = config.rwpo.T
+    beta = config.rwpo.beta
+    a = config.rwpo.a
+  if _type == "fp":
+    T = config.fp.T
+    a = config.fp.a # drift coeff
+    sigma = config.fp.sigma
+  optimizer = optax.adam(config.train.lr)
 
   model = RQSFlow(
-    event_shape=(FLAGS.dim, ),
-    num_layers=FLAGS.flow_num_layers,
-    hidden_sizes=[FLAGS.hidden_size] * FLAGS.mlp_num_layers,
-    num_bins=FLAGS.num_bins,
+    event_shape=(dim, ),
+    num_layers=config.cnf.flow_num_layers,
+    hidden_sizes=[config.cnf.hidden_size] * config.cnf.mlp_num_layers,
+    num_bins=config.cnf.num_bins,
     periodized=False,
   )
   model = hk.without_apply_rng(hk.multi_transform(model))
@@ -115,24 +66,56 @@ def main(_):
   sample_fn = jax.jit(model.apply.sample, static_argnames=["sample_shape"])
   log_prob_fn = jax.jit(model.apply.log_prob)
   key, rng = jax.random.split(rng)
-  params = model.init(key, np.zeros((1, FLAGS.dim)), np.zeros((1, )))
+  params = model.init(key, np.zeros((1, dim)), np.zeros((1, )))
   opt_state = optimizer.init(params)
 
   # boundary condition on density
   source_prob = jax.vmap(
     partial(
       jax.scipy.stats.multivariate_normal.pdf,
-      mean=jnp.zeros(FLAGS.dim),
-      cov=jnp.eye(FLAGS.dim) * 2 / beta * (T + 1)
+      mean=jnp.zeros(dim),
+      cov=jnp.eye(dim) * 2 / beta * (T + 1)
     )
   )
   target_prob = jax.vmap(
     partial(
       jax.scipy.stats.multivariate_normal.pdf,
-      mean=jnp.zeros(FLAGS.dim),
-      cov=jnp.eye(FLAGS.dim) * 2 / beta,
+      mean=jnp.zeros(dim),
+      cov=jnp.eye(dim) * 2 / beta,
     )
   )
+
+  # test the gaussian source
+  def sample_g_source_fn(
+    seed: PRNGKey,
+    sample_shape,
+  ):
+    """
+    According to the exact solution from LQR, the initial condition is given by 
+    rho_0 \sim N(0, 2(T+1)I), we let T=1 here so the variance is 4.
+    """
+
+    return jax.random.normal(seed, shape=(sample_shape, dim)) * 2
+
+
+  def sample_target_fn(
+    seed: PRNGKey,
+    sample_shape,
+  ):
+
+    return jax.random.normal(seed, shape=(sample_shape, dim))
+
+
+  def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
+    # quadratic potential
+    if pot_mode == "quadratic":
+      return jnp.sum(r**2, axis=1) / 2
+    # double-well potential
+    elif pot_mode == "double-well":
+      return (
+        jnp.linalg.norm(r - a * jnp.ones(dim).reshape(1, -1), axis=1) *
+        jnp.linalg.norm(r + a * jnp.ones(dim).reshape(1, -1), axis=1) / 2
+      )**2
 
   # definition of loss functions
   # @partial(jax.jit, static_argnames=["batch_size"])
@@ -197,7 +180,7 @@ def main(_):
   #     velocity = jax.jacfwd(partial(forward_fn, params, xi))(fake_cond_)
   #     # velocity.shape = [batch_size, 2, batch_size, 1]
   #     # velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0].shape = [batch_size, 2]
-  #     return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2) * FLAGS.dim / 2
+  #     return jnp.mean(velocity[jnp.arange(batch_size),:,jnp.arange(batch_size),0]**2) * dim / 2
 
   # kinetic energy based on finite difference
   # @partial(jax.jit, static_argnames=["batch_size"])
@@ -206,7 +189,6 @@ def main(_):
   ) -> Array:
     """Kinetic energy along the trajectory at time t
       """
-    dt = 0.01
     fake_cond_ = np.ones((batch_size, 1)) * (t - dt / 2)
     # TODO: work out why this one does not work
     # r1 = sample_fn(
@@ -226,7 +208,7 @@ def main(_):
     )
     velocity = (r2 - r1) / dt  # velocity.shape = [batch_size, 2]
 
-    return jnp.mean(velocity**2) * FLAGS.dim / 2
+    return jnp.mean(velocity**2) * dim / 2
 
   # score-modified kinetic energy based on finite difference
   # @partial(jax.jit, static_argnames=["batch_size"])
@@ -236,7 +218,6 @@ def main(_):
     """Kinetic energy along the trajectory at time t, notice that this contains
     not only the velocity but also the score function
     """
-    dt = 0.01
     fake_cond_ = np.ones((batch_size, 1)) * (t - dt / 2)
     r1 = sample_fn(
       params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
@@ -253,16 +234,15 @@ def main(_):
     # velocity += jax.jacfwd(partial(log_prob_fn, params, cond=jnp.ones(1) * t))(
     #   r3)[jnp.arange(batch_size),jnp.arange(batch_size)]/beta
     # finite difference approximation of the score function
-    score = jnp.zeros((batch_size, FLAGS.dim))
-    dx = 0.01
-    for i in range(FLAGS.dim):
-      dr = jnp.zeros((1, FLAGS.dim))
+    score = jnp.zeros((batch_size, dim))
+    for i in range(dim):
+      dr = jnp.zeros((1, dim))
       dr = dr.at[0, i].set(dx / 2)
       log_p1 = log_prob_fn(params, r3 + dr, cond=jnp.ones(1) * t)
       log_p2 = log_prob_fn(params, r3 - dr, cond=jnp.ones(1) * t)
       score = score.at[:, i].set((log_p1 - log_p2) / dx)
     velocity += score / beta
-    return jnp.mean(velocity**2) * FLAGS.dim / 2
+    return jnp.mean(velocity**2) * dim / 2
 
   # density fitting using the reverse KL divergence, the samples from the target distribution is available
   # @partial(jax.jit, static_argnames=["batch_size"])
@@ -291,7 +271,6 @@ def main(_):
 
     loss = lambda_ * kl_loss_fn(params, rng, 0, batch_size) \
       + potential_loss_fn(params, rng, T, batch_size)
-    t_batch_size = 1
     t_batch = jax.random.uniform(rng, (t_batch_size, )) * T
     for t in t_batch:
       loss += kinetic_with_score_loss_fn(
@@ -305,42 +284,42 @@ def main(_):
              opt_state: OptState) -> Tuple[Array, hk.Params, OptState]:
     """Single SGD update step."""
     loss, grads = jax.value_and_grad(rwpo_loss_fn
-                                     )(params, rng, lambda_, FLAGS.batch_size)
+                                     )(params, rng, lambda_, batch_size)
     updates, new_opt_state = optimizer.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return loss, new_params, new_opt_state
 
   # training loop
   loss_hist = []
-  iters = tqdm(range(FLAGS.epochs))
+  iters = tqdm(range(epochs))
   lambda_ = 5000
-  print(f"Solving regularized Wasserstein proximal in {FLAGS.dim}D...")
+  print(f"Solving regularized Wasserstein proximal in {dim}D...")
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, lambda_, opt_state)
-    #lambda_ += density_fit_loss_fn(params, rng, lambda_, FLAGS.batch_size)
+    #lambda_ += density_fit_loss_fn(params, rng, lambda_, batch_size)
     loss_hist.append(loss)
 
-    if step % FLAGS.eval_frequency == 0:
+    if step % eval_frequency == 0:
       desc_str = f"{loss=:.4e}"
 
       key, rng = jax.random.split(rng)
       # wasserstein distance
-      if FLAGS.case == "wasserstein":
-        KL = density_fit_rkl_loss_fn(params, rng, lambda_, FLAGS.batch_size)
+      if _type == "wasserstein":
+        KL = density_fit_rkl_loss_fn(params, rng, lambda_, batch_size)
         kin = loss - KL * lambda_
         desc_str += f"{KL=:.4f} | {kin=:.1f} | {lambda_=:.1f}"
-      elif FLAGS.case == "rwpo":
-        # KL = reverse_kl_loss_fn(params, rng, 0, FLAGS.batch_size)
-        KL = kl_loss_fn(params, rng, 0, FLAGS.batch_size)
-        pot = potential_loss_fn(params, rng, T, FLAGS.batch_size)
+      elif _type == "rwpo":
+        # KL = reverse_kl_loss_fn(params, rng, 0, batch_size)
+        KL = kl_loss_fn(params, rng, 0, batch_size)
+        pot = potential_loss_fn(params, rng, T, batch_size)
         kin = loss - KL * lambda_ - pot
         desc_str += f"{KL=:.4f} | {pot=:.2f} | {kin=:.2f} | {lambda_=:.1f}"
 
       iters.set_description_str(desc_str)
 
   plt.plot(
-    jnp.linspace(5001, FLAGS.epochs, FLAGS.epochs - 5000),
+    jnp.linspace(5001, epochs, epochs - 5000),
     jnp.array(loss_hist[5000:])
   )
   plt.savefig("results/fig/loss_hist.pdf")
@@ -352,7 +331,7 @@ def main(_):
     params,
     T,
     beta,
-    FLAGS.dim,
+    dim,
     rng,
   )
   e_pot = potential_loss_fn(params, rng, T, 65536)
@@ -361,7 +340,7 @@ def main(_):
 
   if pot_mode == "quadratic":
     # NOTE: this is the true value for quadratic potential and Gaussian IC
-    true_val = FLAGS.dim * (1 + jnp.log(T + 1)) / beta
+    true_val = dim * (1 + jnp.log(T + 1)) / beta
   elif pot_mode == "double-well":
     if a == 0.5:
       file_name = 'data/fcn4a5_interp.pkl'
@@ -411,7 +390,7 @@ def main(_):
   )
   breakpoint()
 
-  if FLAGS.dim == 2:
+  if dim == 2:
     # this plot the distribution at t=0,1 after training
     # as well as the error of the learned mapping at t=0, 1
     # based on grid evaluation
@@ -446,17 +425,17 @@ def main(_):
   # plot the 1D rwpo example：
   # plot the histogram w.r.t. the ground truth solution
   # plot the velocity at several time step v.s. the ground truth
-  if FLAGS.case == "rwpo" and FLAGS.dim == 1:
+  if _type == "rwpo" and dim == 1:
     plt.clf()
     t = jnp.linspace(0, 1, 6)
     for i in range(2):
       for j in range(3):
         plt.subplot(2, 3, i * 3 + j + 1)
-        fake_cond = np.ones((FLAGS.test_batch_size, 1)) * t[i * 3 + j]
+        fake_cond = np.ones((test_batch_size, 1)) * t[i * 3 + j]
         samples = sample_fn(
           params,
           seed=key,
-          sample_shape=(FLAGS.test_batch_size, ),
+          sample_shape=(test_batch_size, ),
           cond=fake_cond
         )
         plt.hist(samples[..., 0], bins=bins * 4, density=True)
@@ -498,7 +477,7 @@ def main(_):
     plt.savefig("results/fig/rwpo_kin.pdf")
     breakpoint()
 
-    batch_size = FLAGS.batch_size
+    batch_size = batch_size
     loss = potential_loss_fn(params, rng, 1, batch_size)
     t_batch_size = 100  # 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
@@ -510,4 +489,7 @@ def main(_):
 
 
 if __name__ == "__main__":
-  app.run(main)
+  
+  with open("config/main.yaml", "r") as file:
+    config_dict = yaml.safe_load(file)
+  main(config_dict)
