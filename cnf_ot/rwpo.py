@@ -3,6 +3,7 @@ Wasserstein proximal operator ."""
 # TODO: code cleanup
 # the key and rng are used alternatively throughout the code
 # the name of the repo will be changed to cnf_ot
+import pickle
 from functools import partial
 from typing import Tuple
 
@@ -12,7 +13,6 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import ml_collections
 import optax
-import pickle
 import yaml
 from box import Box
 from jaxtyping import Array
@@ -63,13 +63,13 @@ def main(config_dict: ml_collections.ConfigDict):
     a = config.rwpo.a
     subtype = config.rwpo.pot_type
     loss_fn = partial(
-      applications.rwpo_loss_fn, model, dim, T, beta,
-      dt, dx, t_batch_size, subtype
+      applications.rwpo_loss_fn, model, dim, T, beta, dt, dx, t_batch_size,
+      subtype
     )
     print(f"Solving regularized Wasserstein proximal in {dim}D...")
   elif _type == "fp":
     T = config.fp.T
-    a = config.fp.a # drift coeff
+    a = config.fp.a  # drift coeff
     sigma = config.fp.sigma
   elif _type == "ot":
     T = 1
@@ -85,8 +85,7 @@ def main(config_dict: ml_collections.ConfigDict):
   def update(params: hk.Params, rng: PRNGKey, lambda_,
              opt_state: OptState) -> Tuple[Array, hk.Params, OptState]:
     """Single SGD update step."""
-    loss, grads = jax.value_and_grad(loss_fn
-                                     )(params, rng, lambda_, batch_size)
+    loss, grads = jax.value_and_grad(loss_fn)(params, rng, lambda_, batch_size)
     updates, new_opt_state = optimizer.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return loss, new_params, new_opt_state
@@ -106,9 +105,8 @@ def main(config_dict: ml_collections.ConfigDict):
 
       key, rng = jax.random.split(rng)
       if _type == "ot":
-        KL = partial(
-          applications.density_fit_rkl_loss_fn, model, dim, T
-        )(params, rng, batch_size)
+        KL = partial(applications.density_fit_rkl_loss_fn, model, dim,
+                     T)(params, rng, batch_size)
         desc_str += f"{KL=:.4f}"
       # elif _type == "rwpo":
       #   # KL = reverse_kl_loss_fn(params, rng, 0, batch_size)
@@ -120,8 +118,7 @@ def main(config_dict: ml_collections.ConfigDict):
       iters.set_description_str(desc_str)
 
   plt.plot(
-    jnp.linspace(5001, epochs, epochs - 5000),
-    jnp.array(loss_hist[5000:])
+    jnp.linspace(5001, epochs, epochs - 5000), jnp.array(loss_hist[5000:])
   )
   plt.savefig("results/fig/loss_hist.pdf")
   param_count = sum(x.size for x in jax.tree.leaves(params))
@@ -151,9 +148,8 @@ def main(config_dict: ml_collections.ConfigDict):
       dim,
       rng,
     )
-    e_pot = partial(
-      applications.potential_loss_fn, model, dim, a, subtype
-    )(params, rng, T, 65536)
+    e_pot = partial(applications.potential_loss_fn, model, dim, a,
+                    subtype)(params, rng, T, 65536)
     print("kinetic energy: ", e_kin)
     print("potential energy: ", e_pot)
 
@@ -168,7 +164,7 @@ def main(config_dict: ml_collections.ConfigDict):
       with open(file_name, 'rb') as f:
         interpolators = pickle.load(f)
         target_prob = interpolators['rhoT_interp']
-      
+
       x_min = -2
       x_max = 2
       x = jnp.linspace(x_min, x_max, 100)
@@ -197,7 +193,7 @@ def main(config_dict: ml_collections.ConfigDict):
       prob1 = jnp.exp(log_prob_fn(params, XY, cond=fake_cond_))
       prob2 = target_prob(XY)
       print(jnp.sum((prob1 - prob2)**2))
-      plt.figure(figsize=(4,2))
+      plt.figure(figsize=(4, 2))
       plt.subplot(121)
       plt.imshow(prob1.reshape(100, 100))
       plt.subplot(122)
@@ -310,7 +306,7 @@ def main(config_dict: ml_collections.ConfigDict):
 
 
 if __name__ == "__main__":
-  
+
   with open("config/main.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
   main(config_dict)

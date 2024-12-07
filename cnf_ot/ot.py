@@ -305,7 +305,7 @@ def main(_):
 
     def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
       return 50 * jnp.exp(-jnp.sum(r**2, axis=1) / 2)
-      
+
     def potential_loss_fn(
       params: hk.Params, rng: PRNGKey, cond, batch_size: int
     ) -> Array:
