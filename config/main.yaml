@@ -8,16 +8,17 @@ general:
   dim: 2
   dx: 0.01
   dt: 0.01
-  t_batch_size: 10
+  t_batch_size: 1
   seed: 42
 
 ot:
+  subtype: free # free, obstacle
 
 rwpo:
   T: 1
   beta: 1
   a: 1
-  pot_mode: double-well # quadratic, double-well
+  pot_type: double_well # quadratic, double_well
 
 fp:
   T: 1
@@ -34,5 +35,4 @@ train:
   epochs: 30000
   lr: 0.001
   batch_size: 2048
-  test_batch_size: 2000
   eval_frequency: 100

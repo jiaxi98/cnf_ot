@@ -45,7 +45,7 @@ flags.DEFINE_enum(
 flags.DEFINE_boolean("use_64", True, "whether to use float64")
 flags.DEFINE_boolean("plot", False, "whether to plot resulting model density")
 
-flags.DEFINE_integer("dim", 20, "dimension of the base space")
+flags.DEFINE_integer("dim", 2, "dimension of the base space")
 
 FLAGS = flags.FLAGS
 T = 1
@@ -303,6 +303,22 @@ def main(_):
     rng for sampling from CNF in kl_loss and kinetic_loss. 
     """
 
+    def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
+      return 50 * jnp.exp(-jnp.sum(r**2, axis=1) / 2)
+      
+    def potential_loss_fn(
+      params: hk.Params, rng: PRNGKey, cond, batch_size: int
+    ) -> Array:
+
+      fake_cond_ = np.ones((batch_size, 1)) * cond
+      samples, _ = model.apply.sample_and_log_prob(
+        params,
+        cond=fake_cond_,
+        seed=rng,
+        sample_shape=(batch_size, ),
+      )
+      return potential_fn(samples).mean()
+
     # def acc_loss_fn(
     #   t: float, params: hk.Params, rng: PRNGKey, batch_size: int
     # ) -> Array:
@@ -336,14 +352,17 @@ def main(_):
     loss = lambda_ * density_fit_rkl_loss_fn(params, rng, lambda_, batch_size)
     # loss = lambda_ * (density_fit_rkl_loss_fn(params, rng, lambda_, batch_size) -
     #   density_fit_kl_loss_fn(params, rng, lambda_, batch_size))
-    t_batch_size = 1
+    t_batch_size = 10
     t_batch = jax.random.uniform(rng, (t_batch_size, ))
     #t_batch = jnp.linspace(0.05, 0.95, t_batch_size)
     for _ in range(t_batch_size):
       loss += kinetic_loss_fn(
         t_batch[_], params, rng, batch_size // 32
       ) / t_batch_size
-      #+ acc_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
+      # loss += potential_loss_fn(
+      #   params, rng, t_batch[_], batch_size // 32
+      # )
+      # + acc_loss_fn(t_batch[_], params, rng, batch_size//32)/t_batch_size
 
     return loss
 
@@ -416,6 +435,7 @@ def main(_):
   iters = tqdm(range(FLAGS.epochs))
   lambda_ = 1000
   print(f"Solving optimal transport in {FLAGS.dim}D...")
+  # jax.profiler.start_trace("runs")
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, lambda_, opt_state)
@@ -429,6 +449,7 @@ def main(_):
       KL = density_fit_kl_loss_fn(params, rng, lambda_, FLAGS.batch_size)
       desc_str += f"{KL=:.4f} | {lambda_=:.1f}"
       iters.set_description_str(desc_str)
+  # jax.profiler.stop_trace()
 
   plt.plot(
     jnp.linspace(5001, FLAGS.epochs, FLAGS.epochs - 5000),
@@ -510,35 +531,6 @@ def main(_):
       r_=r_,
       t_array=t_array,
     )
-
-  # # plot the distribution at t=0, 1 after training
-  # plt.figure(figsize=(6, 2))
-  # plt.subplot(131)
-  # if FLAGS.dim == 1:
-  #   # for 1d we use histogram
-  #   fake_cond = np.zeros((FLAGS.batch_size, 1))
-  #   samples = sample_fn(
-  #     params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
-  #   )
-  #   plt.hist(samples[..., 0], bins=bins * 4, density=True)
-  #   fake_cond = np.ones((FLAGS.batch_size, 1))
-  #   samples = sample_fn(
-  #     params, seed=key, sample_shape=(FLAGS.batch_size, ), cond=fake_cond
-  #   )
-  #   plt.hist(samples[..., 0], bins=bins * 4, density=True)
-  #   print(
-  #     "kinetic energy: ",
-  #     utils.calc_kinetic_energy(
-  #       sample_fn, forward_fn, inverse_fn, params, rng, FLAGS.dim
-  #     )
-  #   )
-  #   plt.savefig("results/fig/density_1d.pdf")
-  #   plt.show()
-
-  #   plot_1d_map = utils.plot_1d_map(
-  #     forward_fn=forward_fn, params=params, final_mean=3
-  #   )
-  #   plot_1d_map
 
 
 if __name__ == "__main__":
