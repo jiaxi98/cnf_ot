@@ -193,7 +193,7 @@ def kinetic_with_score_loss_fn(
 
 
 def flow_matching_loss_fn(
-  model, dim: int, a: float, sigma: float, dt: float, dx: float,
+  model, dim: int, a: float, sigma: float, subtype: str, dt: float, dx: float,
   params: hk.Params, cond: float, rng: PRNGKey, batch_size: int
 ) -> Array:
     """Kinetic energy along the trajectory at time t, notice that this contains
@@ -222,7 +222,23 @@ def flow_matching_loss_fn(
       log_p2 = model.apply.log_prob(params, r3 - dr, cond=jnp.ones(1) * cond)
       score = score.at[:, i].set((log_p1 - log_p2) / dx)
     velocity += score * sigma
-    truth = -r3 * a
+    if subtype == "gradient":
+      truth = -r3 * a
+    elif subtype == "nongradient":
+      if dim != 2:
+        raise Exception("nongradient case is only implemented for 2D!")
+      A = .1
+      L = 4.5
+      k = 8
+      truth = jnp.zeros((batch_size, dim))
+      truth = truth.at[:, 0].set(A * k * jnp.pi / 2 / L * jnp.sin(
+          k * jnp.pi * (r3[:, 0] + L) / 2 / L
+        ) * jnp.cos(k * jnp.pi * (r3[:, 1] + L) / 2 / L)
+      )
+      truth = truth.at[:, 1].set(A * k * jnp.pi / 2 / L * jnp.sin(
+          k * jnp.pi * (r3[:, 1] + L) / 2 / L
+        ) * jnp.cos(k * jnp.pi * (r3[:, 0] + L) / 2 / L)
+      )
     return jnp.mean((velocity - truth)**2) * dim / 2
 
 
@@ -284,8 +300,7 @@ def fp_loss_fn(
   t_batch_size = 2
   t_batch = jax.random.uniform(rng, (t_batch_size, )) * T
   for t in t_batch:
-    loss += partial(flow_matching_loss_fn, model, dim, a, sigma, dt, dx)(
-      params, t, rng, batch_size // 64
-    ) / t_batch_size
+    loss += partial(flow_matching_loss_fn, model, dim, a, sigma, subtype, dt,
+                    dx)(params, t, rng, batch_size // 64) / t_batch_size
 
   return loss
