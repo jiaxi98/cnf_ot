@@ -39,6 +39,7 @@ def main(config_dict: ml_collections.ConfigDict):
   epochs = config.train.epochs
   batch_size = config.train.batch_size
   eval_frequency = config.train.eval_frequency
+  _lambda = config.train._lambda
 
   model = RQSFlow(
     event_shape=(dim, ),
@@ -71,6 +72,11 @@ def main(config_dict: ml_collections.ConfigDict):
     T = config.fp.T
     a = config.fp.a  # drift coeff
     sigma = config.fp.sigma
+    subtype = config.fp.velocity_field_type
+    loss_fn = partial(
+      applications.fp_loss_fn, model, dim, T, a, sigma, dt, dx, t_batch_size,
+      subtype
+    )
   elif _type == "ot":
     T = 1
     subtype = config.ot.subtype
@@ -82,10 +88,10 @@ def main(config_dict: ml_collections.ConfigDict):
     raise Exception(f"Unknown problem type: {_type}...")
 
   @jax.jit
-  def update(params: hk.Params, rng: PRNGKey, lambda_,
+  def update(params: hk.Params, rng: PRNGKey, _lambda,
              opt_state: OptState) -> Tuple[Array, hk.Params, OptState]:
     """Single SGD update step."""
-    loss, grads = jax.value_and_grad(loss_fn)(params, rng, lambda_, batch_size)
+    loss, grads = jax.value_and_grad(loss_fn)(params, rng, _lambda, batch_size)
     updates, new_opt_state = optimizer.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return loss, new_params, new_opt_state
@@ -93,11 +99,11 @@ def main(config_dict: ml_collections.ConfigDict):
   # training loop
   loss_hist = []
   iters = tqdm(range(epochs))
-  lambda_ = 5000
+  # jax.profiler.start_trace("runs")
   for step in iters:
     key, rng = jax.random.split(rng)
-    loss, params, opt_state = update(params, key, lambda_, opt_state)
-    #lambda_ += density_fit_loss_fn(params, rng, lambda_, batch_size)
+    loss, params, opt_state = update(params, key, _lambda, opt_state)
+    #_lambda += density_fit_loss_fn(params, rng, _lambda, batch_size)
     loss_hist.append(loss)
 
     if step % eval_frequency == 0:
@@ -116,6 +122,7 @@ def main(config_dict: ml_collections.ConfigDict):
       #   desc_str += f"{KL=:.4f} | {pot=:.2f} | {kin=:.2f}"
 
       iters.set_description_str(desc_str)
+  # jax.profiler.stop_trace()
 
   plt.plot(
     jnp.linspace(5001, epochs, epochs - 5000), jnp.array(loss_hist[5000:])
@@ -205,6 +212,96 @@ def main(config_dict: ml_collections.ConfigDict):
         e_kin + e_pot, (e_kin + e_pot - true_val) / true_val * 100
       )
     )
+  elif _type == "fp":
+    source_prob = jax.vmap(
+      partial(
+        jax.scipy.stats.multivariate_normal.pdf,
+        mean=jnp.zeros(dim),
+        cov=4 * jnp.eye(dim)
+      )
+    )
+    target_prob = jax.vmap(
+      partial(
+        jax.scipy.stats.multivariate_normal.pdf,
+        mean=jnp.zeros(dim),
+        cov=jnp.eye(dim) *
+        (jnp.exp(-2 * a * T) * (4 - 1 / 2 / a) + 1 / 2 / a),
+      )
+    )
+    def rmse_mc_loss_fn(
+      params: hk.Params, rng: PRNGKey, cond, batch_size: int
+    ) -> Array:
+      """MSE between the normalizing flow and the reference distribution.
+      """
+
+      fake_cond_ = jnp.ones((batch_size, 1)) * cond
+      samples, log_prob = model.apply.sample_and_log_prob(
+        params,
+        cond=fake_cond_,
+        seed=rng,
+        sample_shape=(batch_size, ),
+      )
+      return jnp.sqrt(
+        (
+          (
+            jnp.exp(log_prob) -
+            (source_prob(samples) * (1 - cond) + target_prob(samples) * cond)
+          )**2
+        ).mean()
+      )
+
+    print(
+      "L2 error via Monte-Carlo: {:.3e}".format(
+        rmse_mc_loss_fn(params, rng, 1, 1000000)
+      )
+    )
+
+    if dim == 2:
+      def rmse_grid_loss_fn(params: hk.Params, cond, grid_size: int) -> Array:
+        """MSE between the normalizing flow and the reference distribution.
+        """
+
+        fake_cond_ = jnp.ones(1) * cond
+        x_min = -5
+        x_max = 5
+        x = jnp.linspace(x_min, x_max, grid_size)
+        y = jnp.linspace(x_min, x_max, grid_size)
+        X, Y = jnp.meshgrid(x, y)
+        XY = jnp.hstack([X.reshape(-1, 1), Y.reshape(-1, 1)])
+        return jnp.sqrt(
+          (
+            (
+              jnp.exp(log_prob_fn(params, XY, fake_cond_)) -
+              (source_prob(XY) * (1 - cond) + target_prob(XY) * cond)
+            )**2
+          ).mean()
+        )
+
+      r_ = jnp.vstack(
+        [
+          jnp.array([-1.0, -1.0]),
+          jnp.array([-1.0, -0.0]),
+          jnp.array([-1.0, 1.0]),
+          jnp.array([0.0, -1.0]),
+          jnp.array([0.0, 0.0]),
+          jnp.array([0.0, 1.0]),
+          jnp.array([1.0, -1.0]),
+          jnp.array([1.0, 0.0]),
+          jnp.array([1.0, 1.0])
+        ]
+      )
+      r_ = r_ * 3
+      t_array = jnp.linspace(0, T, 20)
+      utils.plot_density_and_trajectory(
+        forward_fn,
+        inverse_fn,
+        log_prob_fn,
+        params=params,
+        r_=r_,
+        t_array=t_array,
+      )
+      print("L2 error on grid: {:.3e}".format(rmse_grid_loss_fn(params, 1, 500)))
+  
   breakpoint()
 
   if dim == 2:

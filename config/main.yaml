@@ -4,11 +4,11 @@ hydra:
     dir: .
 
 general:
-  type: rwpo # ot, rwpo, fp
+  type: fp # ot, rwpo, fp
   dim: 2
   dx: 0.01
   dt: 0.01
-  t_batch_size: 1
+  t_batch_size: 5
   seed: 42
 
 ot:
@@ -18,12 +18,13 @@ rwpo:
   T: 1
   beta: 1
   a: 1
-  pot_type: double_well # quadratic, double_well
+  pot_type: quadratic # quadratic, double_well
 
 fp:
   T: 1
   a: 1 # drift coeff
-  sigma: 1/2
+  sigma: .5
+  velocity_field_type: gradient # gradient, non_gradient
 
 cnf:
   flow_num_layers: 2
@@ -34,5 +35,6 @@ cnf:
 train:
   epochs: 30000
   lr: 0.001
+  _lambda: 500.
   batch_size: 2048
   eval_frequency: 100

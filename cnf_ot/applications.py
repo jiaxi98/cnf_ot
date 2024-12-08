@@ -192,6 +192,40 @@ def kinetic_with_score_loss_fn(
   return jnp.mean(velocity**2) * dim / 2
 
 
+def flow_matching_loss_fn(
+  model, dim: int, a: float, sigma: float, dt: float, dx: float,
+  params: hk.Params, cond: float, rng: PRNGKey, batch_size: int
+) -> Array:
+    """Kinetic energy along the trajectory at time t, notice that this contains
+    not only the velocity but also the score function
+    """
+    dt = 0.01
+    fake_cond_ = jnp.ones((batch_size, 1)) * (cond - dt / 2)
+    r1 = model.apply.sample(
+      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+    )
+    fake_cond_ = jnp.ones((batch_size, 1)) * (cond + dt / 2)
+    r2 = model.apply.sample(
+      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+    )
+    fake_cond_ = jnp.ones((batch_size, 1)) * cond
+    r3 = model.apply.sample(
+      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+    )
+    velocity = (r2 - r1) / dt
+    score = jnp.zeros((batch_size, dim))
+    dx = 0.01
+    for i in range(dim):
+      dr = jnp.zeros((1, dim))
+      dr = dr.at[0, i].set(dx / 2)
+      log_p1 = model.apply.log_prob(params, r3 + dr, cond=jnp.ones(1) * cond)
+      log_p2 = model.apply.log_prob(params, r3 - dr, cond=jnp.ones(1) * cond)
+      score = score.at[:, i].set((log_p1 - log_p2) / dx)
+    velocity += score * sigma
+    truth = -r3 * a
+    return jnp.mean((velocity - truth)**2) * dim / 2
+
+
 def ot_loss_fn(
   model, dim: int, T: float, dt: float, t_batch_size: int, subtype: str,
   params: hk.Params, rng: PRNGKey, _lambda: float, batch_size: int
@@ -233,5 +267,25 @@ def rwpo_loss_fn(
   for t in t_batch:
     loss += partial(kinetic_with_score_loss_fn, model, dim, beta, dt,
                     dx)(params, t, rng, batch_size // 32) / t_batch_size * T
+
+  return loss
+
+
+def fp_loss_fn(
+  model, dim: int, T: float, a: float, sigma: float, dt: float, dx: float,
+  t_batch_size: int, subtype: str, params: hk.Params, rng: PRNGKey,
+  _lambda: float, batch_size: int
+) -> Array:
+  """Loss of the mean-field potential game
+  """
+
+  beta = 1  # the initial Gaussian distribution has variance 4
+  loss = _lambda * partial(kl_loss_fn, model, dim, T, beta)(params, 0, rng, batch_size)
+  t_batch_size = 2
+  t_batch = jax.random.uniform(rng, (t_batch_size, )) * T
+  for t in t_batch:
+    loss += partial(flow_matching_loss_fn, model, dim, a, sigma, dt, dx)(
+      params, t, rng, batch_size // 64
+    ) / t_batch_size
 
   return loss

@@ -435,7 +435,6 @@ def main(_):
   iters = tqdm(range(FLAGS.epochs))
   lambda_ = 1000
   print(f"Solving optimal transport in {FLAGS.dim}D...")
-  # jax.profiler.start_trace("runs")
   for step in iters:
     key, rng = jax.random.split(rng)
     loss, params, opt_state = update(params, key, lambda_, opt_state)
@@ -449,7 +448,6 @@ def main(_):
       KL = density_fit_kl_loss_fn(params, rng, lambda_, FLAGS.batch_size)
       desc_str += f"{KL=:.4f} | {lambda_=:.1f}"
       iters.set_description_str(desc_str)
-  # jax.profiler.stop_trace()
 
   plt.plot(
     jnp.linspace(5001, FLAGS.epochs, FLAGS.epochs - 5000),
