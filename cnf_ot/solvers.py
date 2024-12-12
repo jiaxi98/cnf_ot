@@ -115,9 +115,9 @@ def main(config_dict: ml_collections.ConfigDict):
                      T)(params, rng, batch_size)
         desc_str += f"{KL=:.4f}"
       # elif _type == "rwpo":
-      #   # KL = reverse_kl_loss_fn(params, rng, 0, batch_size)
-      #   KL = kl_loss_fn(params, rng, 0, batch_size)
-      #   pot = potential_loss_fn(params, rng, T, batch_size)
+      #   # KL = reverse_kl_loss_fn(params, 0, rng, batch_size)
+      #   KL = kl_loss_fn(params, 0, rng batch_size)
+      #   pot = potential_loss_fn(params, T, rng, batch_size)
       #   kin = loss - KL * _lambda - pot
       #   desc_str += f"{KL=:.4f} | {pot=:.2f} | {kin=:.2f}"
 
@@ -156,7 +156,7 @@ def main(config_dict: ml_collections.ConfigDict):
       rng,
     )
     e_pot = partial(applications.potential_loss_fn, model, dim, a,
-                    subtype)(params, rng, T, 65536)
+                    subtype)(params, T, rng, 65536)
     print("kinetic energy: ", e_kin)
     print("potential energy: ", e_pot)
 
@@ -229,7 +229,7 @@ def main(config_dict: ml_collections.ConfigDict):
       )
     )
     def rmse_mc_loss_fn(
-      params: hk.Params, rng: PRNGKey, cond, batch_size: int
+      params: hk.Params, cond: float, rng: PRNGKey, batch_size: int
     ) -> Array:
       """MSE between the normalizing flow and the reference distribution.
       """
@@ -252,7 +252,7 @@ def main(config_dict: ml_collections.ConfigDict):
 
     print(
       "L2 error via Monte-Carlo: {:.3e}".format(
-        rmse_mc_loss_fn(params, rng, 1, 1000000)
+        rmse_mc_loss_fn(params, 1, rng, 1000000)
       )
     )
 
@@ -392,7 +392,7 @@ def main(config_dict: ml_collections.ConfigDict):
   #   breakpoint()
 
   #   batch_size = batch_size
-  #   loss = potential_loss_fn(params, rng, 1, batch_size)
+  #   loss = potential_loss_fn(params, 1, rng, batch_size)
   #   t_batch_size = 100  # 10
   #   t_batch = jax.random.uniform(rng, (t_batch_size, ))
   #   for _ in range(t_batch_size):
