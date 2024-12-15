@@ -347,13 +347,13 @@ class ConditionalTransformed(Transformed):
     )
     return samples, log_prob
 
-  def _sample_n(self, key: PRNGKey, n: int, cond: Array) -> Array:
+  def _sample_n(self, rng: PRNGKey, n: int, cond: Array) -> Array:
     """Returns `n` samples."""
-    x = self.distribution.sample(seed=key, sample_shape=n)
+    x = self.distribution.sample(seed=rng, sample_shape=n)
     y = jax.vmap(self.bijector.forward)(x, cond)
     return y
 
-  def _sample_n_and_log_prob(self, key: PRNGKey, n: int,
+  def _sample_n_and_log_prob(self, rng: PRNGKey, n: int,
                              cond: Array) -> Tuple[Array, Array]:
     """Returns `n` samples and their log probs.
 
@@ -362,13 +362,13 @@ class ConditionalTransformed(Transformed):
     also works for bijectors that don't implement inverse methods.
 
     Args:
-      key: PRNG key.
+      rng: PRNG key.
       n: Number of samples to generate.
 
     Returns:
       A tuple of `n` samples and their log probs.
     """
-    x, lp_x = self.distribution.sample_and_log_prob(seed=key, sample_shape=n)
+    x, lp_x = self.distribution.sample_and_log_prob(seed=rng, sample_shape=n)
     y, fldj = jax.vmap(self.bijector.forward_and_log_det)(x, cond)
     lp_y = jax.vmap(jnp.subtract)(lp_x, fldj)
     return y, lp_y

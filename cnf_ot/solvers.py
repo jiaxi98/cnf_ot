@@ -1,8 +1,5 @@
 """A simple example of a flow model trained to solve the regularized
 Wasserstein proximal operator ."""
-# TODO: code cleanup
-# the key and rng are used alternatively throughout the code
-# the name of the repo will be changed to cnf_ot
 import pickle
 from functools import partial
 from typing import Tuple
@@ -53,8 +50,8 @@ def main(config_dict: ml_collections.ConfigDict):
   inverse_fn = jax.jit(model.apply.inverse)
   sample_fn = jax.jit(model.apply.sample, static_argnames=["sample_shape"])
   log_prob_fn = jax.jit(model.apply.log_prob)
-  key, rng = jax.random.split(rng)
-  params = model.init(key, jnp.zeros((1, dim)), jnp.zeros((1, )))
+  model_rng, rng = jax.random.split(rng)
+  params = model.init(model_rng, jnp.zeros((1, dim)), jnp.zeros((1, )))
   optimizer = optax.adam(config.train.lr)
   opt_state = optimizer.init(params)
 
@@ -77,6 +74,7 @@ def main(config_dict: ml_collections.ConfigDict):
       applications.fp_loss_fn, model, dim, T, a, sigma, dt, dx, t_batch_size,
       subtype
     )
+    print(f"Solving Fokker-Planck equation in {dim}D...")
   elif _type == "ot":
     T = 1
     subtype = config.ot.subtype
@@ -101,23 +99,22 @@ def main(config_dict: ml_collections.ConfigDict):
   iters = tqdm(range(epochs))
   # jax.profiler.start_trace("runs")
   for step in iters:
-    key, rng = jax.random.split(rng)
-    loss, params, opt_state = update(params, key, _lambda, opt_state)
-    #_lambda += density_fit_loss_fn(params, rng, _lambda, batch_size)
+    update_rng, rng = jax.random.split(rng)
+    loss, params, opt_state = update(params, update_rng, _lambda, opt_state)
     loss_hist.append(loss)
 
     if step % eval_frequency == 0:
       desc_str = f"{loss=:.4e}"
 
-      key, rng = jax.random.split(rng)
+      eval_rng, rng = jax.random.split(rng)
       if _type == "ot":
         KL = partial(applications.density_fit_rkl_loss_fn, model, dim,
-                     T)(params, rng, batch_size)
+                     T)(params, eval_rng, batch_size)
         desc_str += f"{KL=:.4f}"
       # elif _type == "rwpo":
-      #   # KL = reverse_kl_loss_fn(params, 0, rng, batch_size)
-      #   KL = kl_loss_fn(params, 0, rng batch_size)
-      #   pot = potential_loss_fn(params, T, rng, batch_size)
+      #   # KL = reverse_kl_loss_fn(params, 0, eval_rng, batch_size)
+      #   KL = kl_loss_fn(params, 0, eval_rng, batch_size)
+      #   pot = potential_loss_fn(params, T, eval_rng, batch_size)
       #   kin = loss - KL * _lambda - pot
       #   desc_str += f"{KL=:.4f} | {pot=:.2f} | {kin=:.2f}"
 
@@ -131,18 +128,19 @@ def main(config_dict: ml_collections.ConfigDict):
   param_count = sum(x.size for x in jax.tree.leaves(params))
   print("Network parameters: {}".format(param_count))
 
+  eval_rng, rng = jax.random.split(rng)
   if _type == "ot":
     print(
       "kinetic energy with more samples: ",
       utils.calc_kinetic_energy(
-        sample_fn, params, rng, batch_size=65536, t_size=10000, dim=dim
+        sample_fn, params, eval_rng, batch_size=65536, t_size=10000, dim=dim
       )
     )
 
     print(
       "kinetic energy with less samples: ",
       utils.calc_kinetic_energy(
-        sample_fn, params, rng, batch_size=4096, t_size=1000, dim=dim
+        sample_fn, params, eval_rng, batch_size=4096, t_size=1000, dim=dim
       )
     )
   elif _type == "rwpo":
@@ -153,10 +151,10 @@ def main(config_dict: ml_collections.ConfigDict):
       T,
       beta,
       dim,
-      rng,
+      eval_rng,
     )
     e_pot = partial(applications.potential_loss_fn, model, dim, a,
-                    subtype)(params, T, rng, 65536)
+                    subtype)(params, T, eval_rng, 65536)
     print("kinetic energy: ", e_kin)
     print("potential energy: ", e_pot)
 
@@ -182,10 +180,10 @@ def main(config_dict: ml_collections.ConfigDict):
       def cost_rwpo(rng: PRNGKey, x_batch: int, y_batch: int):
         """calculate the cost of the rwpo"""
 
-        rng, key = jax.random.split(rng)
+        rng, _rng = jax.random.split(rng)
         x = jax.random.normal(rng, shape=(x_batch, 2)) *\
           jnp.sqrt(2 / beta * (T + 1))
-        y = jax.random.normal(key, shape=(x_batch, y_batch, 2)) *\
+        y = jax.random.normal(_rng, shape=(x_batch, y_batch, 2)) *\
           jnp.sqrt(2 / beta * T) + x.reshape(-1, 1, 2)
         return -2 / beta * jnp.log(
           jnp.exp(
@@ -206,7 +204,7 @@ def main(config_dict: ml_collections.ConfigDict):
       plt.subplot(122)
       plt.imshow(prob2.reshape(100, 100))
       plt.savefig("results/fig/double-well.pdf")
-      true_val = cost_rwpo(rng, 100, 1000)
+      true_val = cost_rwpo(eval_rng, 100, 1000)
     print(
       "total energy: {:.3f}|relative err: {:.3e}".format(
         e_kin + e_pot, (e_kin + e_pot - true_val) / true_val * 100
@@ -252,7 +250,7 @@ def main(config_dict: ml_collections.ConfigDict):
 
     print(
       "L2 error via Monte-Carlo: {:.3e}".format(
-        rmse_mc_loss_fn(params, 1, rng, 1000000)
+        rmse_mc_loss_fn(params, 1, eval_rng, 1000000)
       )
     )
 
@@ -335,71 +333,6 @@ def main(config_dict: ml_collections.ConfigDict):
       r_=r_,
       t_array=t_array,
     )
-
-  # plot the 1D rwpo example：
-  # plot the histogram w.r.t. the ground truth solution
-  # plot the velocity at several time step v.s. the ground truth
-  # if _type == "rwpo" and dim == 1:
-  #   plt.clf()
-  #   t = jnp.linspace(0, 1, 6)
-  #   for i in range(2):
-  #     for j in range(3):
-  #       plt.subplot(2, 3, i * 3 + j + 1)
-  #       fake_cond = jnp.ones((test_batch_size, 1)) * t[i * 3 + j]
-  #       samples = sample_fn(
-  #         params,
-  #         seed=key,
-  #         sample_shape=(test_batch_size, ),
-  #         cond=fake_cond
-  #       )
-  #       plt.hist(samples[..., 0], bins=bins * 4, density=True)
-  #       x = jnp.linspace(-5, 5, 1000)
-  #       rho = jax.vmap(
-  #         distrax.Normal(loc=0,
-  #                        scale=jnp.sqrt(beta * 2 * (2 - t[i * 3 + j]))).prob
-  #       )(x)
-  #       plt.plot(x, rho, label=r"$\rho_*$")
-  #       plt.legend()
-  #   plt.savefig("results/fig/rwpo.pdf")
-  #   plt.clf()
-
-  #   kinetic_err = []
-  #   t_array = jnp.linspace(0, 1, 101)
-  #   batch_size = 1000
-  #   for t in t_array:
-  #     fake_cond_ = jnp.ones((batch_size, 1)) * t
-  #     samples = sample_fn(
-  #       params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
-  #     )
-  #     xi = inverse_fn(params, samples, fake_cond_)
-  #     velocity = jax.jacfwd(partial(forward_fn, params,
-  #                                   xi))(fake_cond_)[jnp.arange(batch_size), :,
-  #                                                    jnp.arange(batch_size), 0]
-  #     ground_truth = -jnp.sqrt(1 / 8 / (2 - t)) * samples
-  #     kinetic_err.append(jnp.mean((velocity - ground_truth)**2))
-  #     plt.figure(figsize=(4, 2))
-  #     plt.scatter(samples, velocity, c="b", label="compute", s=.1)
-  #     plt.scatter(samples, ground_truth, c="r", label="ground truth", s=.1)
-  #     plt.legend()
-  #     plt.title("t = {:.2f}".format(t))
-  #     plt.savefig("results/fig/{:.2f}.pdf".format(t))
-  #     plt.clf()
-  #   plt.plot(
-  #     t_array, kinetic_err, label=r"$\left\| \dot{x} - \dot{x}_* \right\|^2$"
-  #   )
-  #   plt.legend()
-  #   plt.savefig("results/fig/rwpo_kin.pdf")
-  #   breakpoint()
-
-  #   batch_size = batch_size
-  #   loss = potential_loss_fn(params, 1, rng, batch_size)
-  #   t_batch_size = 100  # 10
-  #   t_batch = jax.random.uniform(rng, (t_batch_size, ))
-  #   for _ in range(t_batch_size):
-  #     loss += kinetic_loss_fn(
-  #       t_batch[_], params, rng, batch_size // 32
-  #     ) / t_batch_size
-  #   print("loss: {:.4f}".format(loss))
 
 
 if __name__ == "__main__":

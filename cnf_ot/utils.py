@@ -26,14 +26,14 @@ def calc_kinetic_energy(
 
   for t in t_array:
 
-    key, rng = jax.random.split(rng)
+    _rng, rng = jax.random.split(rng)
     fake_cond_ = np.ones((batch_size, 1)) * (t - dt / 2)
     r1 = sample_fn(
-      params, seed=key, sample_shape=(batch_size, ), cond=fake_cond_
+      params, seed=_rng, sample_shape=(batch_size, ), cond=fake_cond_
     )
     fake_cond_ = np.ones((batch_size, 1)) * (t + dt / 2)
     r2 = sample_fn(
-      params, seed=key, sample_shape=(batch_size, ), cond=fake_cond_
+      params, seed=_rng, sample_shape=(batch_size, ), cond=fake_cond_
     )
     velocity = (r2 - r1) / dt
     e_kin += jnp.mean(velocity**2) / 2
@@ -48,7 +48,7 @@ def calc_score_kinetic_energy(
   T: float = 1,
   beta: float = 1,
   dim: int = 1,
-  key: PRNGKey = PRNGKey(0),
+  rng: PRNGKey = PRNGKey(0),
   batch_size: int = 65536,
   t_size: int = 10000,
 ):
@@ -59,18 +59,18 @@ def calc_score_kinetic_energy(
 
   for t in t_array:
 
-    key, rng = jax.random.split(key)
+    _rng, rng = jax.random.split(rng)
     fake_cond_ = np.ones((batch_size, 1)) * (t - dt / 2)
     r1 = sample_fn(
-      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+      params, seed=_rng, sample_shape=(batch_size, ), cond=fake_cond_
     )
     fake_cond_ = np.ones((batch_size, 1)) * (t + dt / 2)
     r2 = sample_fn(
-      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+      params, seed=_rng, sample_shape=(batch_size, ), cond=fake_cond_
     )
     fake_cond_ = np.ones((batch_size, 1)) * t
     r3 = sample_fn(
-      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+      params, seed=_rng, sample_shape=(batch_size, ), cond=fake_cond_
     )
     velocity = (r2 - r1) / dt
     score = jnp.zeros((batch_size, dim))
@@ -133,7 +133,7 @@ def plot_distribution_trajectory(
   sample_fn: callable,
   forward_fn: callable,
   params: hk.Params,
-  key: PRNGKey,
+  rng: PRNGKey,
   batch_size,
   mu1: float,
   mu2: float,
@@ -150,7 +150,7 @@ def plot_distribution_trajectory(
   for i in range(6):
     fake_cond = np.ones((batch_size, 1)) * t_array[i]
     samples = sample_fn(
-      params, seed=key, sample_shape=(batch_size, ), cond=fake_cond
+      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond
     )
     plt.scatter(
       samples[..., 0], samples[..., 1], s=.1, color=cmap(norm(t_array[i]))
@@ -188,7 +188,7 @@ def plot_distribution_trajectory(
 def plot_samples_snapshot(
   sample_fn: callable,
   params: hk.Params,
-  key: PRNGKey,
+  rng: PRNGKey,
   batch_size,
   t_array: jnp.array,
 ):
@@ -202,7 +202,7 @@ def plot_samples_snapshot(
     plt.subplot(1, 5, i + 1)
     fake_cond = np.ones((batch_size, 1)) * t_array[i]
     samples = sample_fn(
-      params, seed=key, sample_shape=(batch_size, ), cond=fake_cond
+      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond
     )
     plt.scatter(
       samples[..., 0],
@@ -302,10 +302,10 @@ def plot_traj_and_velocity(
   i = 0
   for t in t_array:
 
-    key, rng = jax.random.split(rng)
+    _rng, rng = jax.random.split(rng)
     fake_cond_ = np.ones((batch_size_pdf, 1)) * t
     samples = sample_fn(
-      params, seed=key, sample_shape=(batch_size_pdf, ), cond=fake_cond_
+      params, seed=_rng, sample_shape=(batch_size_pdf, ), cond=fake_cond_
     )
     ax1[i // 2, i % 2].scatter(samples[..., 0], samples[..., 1], s=1)
 
@@ -316,7 +316,7 @@ def plot_traj_and_velocity(
     y = np.linspace(x_min, x_max, 10)
     X, Y = np.meshgrid(x, y)
     XY = jnp.hstack([X.reshape(10**2, 1), Y.reshape(10**2, 1)])
-    # samples = sample_fn(params, seed=key, sample_shape=(batch_size_velocity, ), cond=fake_cond_)
+    # samples = sample_fn(params, seed=rng, sample_shape=(batch_size_velocity, ), cond=fake_cond_)
     xi = inverse_fn(params, XY, jnp.zeros(1))
     velocity = jax.jacfwd(partial(forward_fn, params, xi))(jnp.zeros(1))
     ax2[i // 2, i % 2].quiver(

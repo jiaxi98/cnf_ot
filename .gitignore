@@ -12,5 +12,4 @@ pyvenv.cfg
 */.coverage.*
 
 results
-data
 share
