@@ -224,21 +224,41 @@ def flow_matching_loss_fn(
     velocity += score * sigma
     if subtype == "gradient":
       truth = -r3 * a
+      x = r3[:, 0]
+      y = r3[:, 1]
+      # _pi = jnp.exp(-20 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+      #                10 * (y - 2)**2) +\
+      #       jnp.exp(-20 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+      #                10 * (y - 2)**2) +\
+      #       jnp.exp(-20 * (x**2 + y**2 - 2)**2 - 10 * (y + 1)**2) + .01
+      # dpidx = jnp.exp(-20 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+      #                10 * (y - 2)**2) * ((x - 6/5)**2 + (y - 6/5)**2 - .5) *\
+      #                80 * (x - 6/5) +\
+      #         jnp.exp(-20 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+      #                 10 * (y - 2)**2) * ((x + 6/5)**2 + (y - 6/5)**2 - .5) *\
+      #                80 * (x + 6/5) +\
+      #         jnp.exp(-20 * (x**2 + y**2 - 2)**2 - 10 * (y + 1)**2) *\
+      #                 (x**2 + y**2 - 2) * 80 * x
+      # dpidy = jnp.exp(-20 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+      #                10 * (y - 2)**2) * (((x - 6/5)**2 + (y - 6/5)**2 - .5) *
+      #                80 * (y - 6/5) + 20 * (y - 2)) +\
+      #         jnp.exp(-20 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+      #                 10 * (y - 2)**2) * (((x + 6/5)**2 + (y - 6/5)**2 - .5) *
+      #                80 * (x + 6/5) + 20 * (y - 2)) +\
+      #         jnp.exp(-20 * (x**2 + y**2 - 2)**2 - 10 * (y + 1)**2) *\
+      #                 ((x**2 + y**2 - 2) * 80 * y + 20 * (y + 1))
+      # truth = -jnp.concat([(dpidx/_pi)[:, None], (dpidy/_pi)[:, None]], axis=1)
+      grad_x = -(x**2 + y**2 - 2) * 8 * x
+      grad_y = -(x**2 + y**2 - 2) * 8 * y - 2 * (y + 1)**2
+      truth = -jnp.concat([grad_x[:, None], grad_y[:, None]], axis=1)
+      truth *= a
     elif subtype == "nongradient":
       if dim != 2:
         raise Exception("nongradient case is only implemented for 2D!")
-      A = .1
-      L = 4.5
-      k = 8
-      truth = jnp.zeros((batch_size, dim))
-      truth = truth.at[:, 0].set(A * k * jnp.pi / 2 / L * jnp.sin(
-          k * jnp.pi * (r3[:, 0] + L) / 2 / L
-        ) * jnp.cos(k * jnp.pi * (r3[:, 1] + L) / 2 / L)
-      )
-      truth = truth.at[:, 1].set(A * k * jnp.pi / 2 / L * jnp.sin(
-          k * jnp.pi * (r3[:, 1] + L) / 2 / L
-        ) * jnp.cos(k * jnp.pi * (r3[:, 0] + L) / 2 / L)
-      )
+      J = jnp.array([[0, 1], [-1, 0]])
+      delta = 0.5
+      truth = -r3 * a + jnp.dot(r3, J) * delta
+      
     return jnp.mean((velocity - truth)**2) * dim / 2
 
 
