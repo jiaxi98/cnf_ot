@@ -325,11 +325,6 @@ def main(_):
     params: hk.Params, rng: PRNGKey, cond, batch_size: int
   ) -> Array:
     """KL-divergence between the normalizing flow and the reference distribution.
-    
-    TODO: here, we assume the p.d.f. of the target distribution is known. 
-    In the case where we only access to samples from target distribution,
-    KL-divergence is not calculable and we need to shift to other integral 
-    probability metric, e.g. MMD.
     """
 
     fake_cond_ = np.ones((batch_size, 1)) * cond
@@ -381,11 +376,6 @@ def main(_):
     params: hk.Params, rng: PRNGKey, cond, batch_size: int
   ) -> Array:
     """KL-divergence between the normalizing flow and the reference distribution.
-    
-    TODO: here, we assume the p.d.f. of the target distribution is known. 
-    In the case where we only access to samples from target distribution,
-    KL-divergence is not calculable and we need to shift to other integral 
-    probability metric, e.g. MMD.
     """
 
     fake_cond_ = jnp.ones((batch_size, 1)) * cond
