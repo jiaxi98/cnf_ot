@@ -64,7 +64,9 @@ def main(config_dict: ml_collections.ConfigDict):
       applications.rwpo_loss_fn, model, dim, T, beta, dt, dx, t_batch_size,
       subtype
     )
-    print(f"Solving regularized Wasserstein proximal in {dim}D...")
+    print(
+      f"Solving regularized Wasserstein proximal in {dim}D with lambda{_lambda}..."
+    )
   elif _type == "fp":
     T = config.fp.T
     a = config.fp.a  # drift coeff
@@ -74,14 +76,14 @@ def main(config_dict: ml_collections.ConfigDict):
       applications.fp_loss_fn, model, dim, T, a, sigma, dt, dx, t_batch_size,
       subtype
     )
-    print(f"Solving Fokker-Planck equation in {dim}D...")
+    print(f"Solving Fokker-Planck equation in {dim}D with lambda{_lambda}...")
   elif _type == "ot":
     T = 1
     subtype = config.ot.subtype
     loss_fn = partial(
       applications.ot_loss_fn, model, dim, T, dt, t_batch_size, subtype
     )
-    print(f"Solving optimal transport in {dim}D...")
+    print(f"Solving optimal transport in {dim}D with lambda{_lambda}...")
   else:
     raise Exception(f"Unknown problem type: {_type}...")
 
@@ -108,18 +110,19 @@ def main(config_dict: ml_collections.ConfigDict):
 
       eval_rng, rng = jax.random.split(rng)
       if _type == "ot":
-        KL = partial(applications.density_fit_rkl_loss_fn, model, dim,
+        KL = partial(applications.density_fit_kl_loss_fn, model, dim,
                      T)(params, eval_rng, batch_size)
         desc_str += f"{KL=:.4f}"
       # elif _type == "rwpo":
-      #   # KL = reverse_kl_loss_fn(params, 0, eval_rng, batch_size)
+      #   # rKL = reverse_kl_loss_fn(params, 0, eval_rng, batch_size)
       #   KL = kl_loss_fn(params, 0, eval_rng, batch_size)
       #   pot = potential_loss_fn(params, T, eval_rng, batch_size)
-      #   kin = loss - KL * _lambda - pot
+      #   kin = loss - rKL * _lambda - pot
       #   desc_str += f"{KL=:.4f} | {pot=:.2f} | {kin=:.2f}"
 
       iters.set_description_str(desc_str)
   # jax.profiler.stop_trace()
+  # return
 
   plt.plot(
     jnp.linspace(5001, epochs, epochs - 5000), jnp.array(loss_hist[5000:])
@@ -255,6 +258,7 @@ def main(config_dict: ml_collections.ConfigDict):
     )
 
     if dim == 2:
+      # for low dimension problem, we can also calculate the L2 loss on a grid
       def rmse_grid_loss_fn(params: hk.Params, cond, grid_size: int) -> Array:
         """MSE between the normalizing flow and the reference distribution.
         """
@@ -274,23 +278,51 @@ def main(config_dict: ml_collections.ConfigDict):
             )**2
           ).mean()
         )
+      
+      print(
+        "L2 error on grid: {:.3e}".format(rmse_grid_loss_fn(params, 1, 500))
+      )
 
+      # the following is used for debugging the complex target distributions
+      utils.plot_velocity_field(log_prob_fn, params, r_)
+      r1 = 8
+      r2 = 8
+      x_min = -3
+      x_max = 3
+      y_min = -3
+      y_max = 3
+      nx = 100
+      x = jnp.linspace(x_min, x_max, nx)
+      y = jnp.linspace(y_min, y_max, nx)
+      X, Y = jnp.meshgrid(x, y)
+      y0 = 8/5
+      x0 = 3/2
+      _pi = jnp.exp(-r1/4 * ((X - x0)**2 + (Y - 6/5)**2 - .5)**2 -
+                    r2/2 * (Y - y0)**2) +\
+            jnp.exp(-r1/4 * ((X + x0)**2 + (Y - 6/5)**2 - .5)**2 -
+                    r2/2 * (Y - y0)**2) + 1e-20
+      plt.clf()
+      plt.imshow(_pi)
+      plt.savefig("results/fig/true_density.pdf")
+  
+    if dim == 3 and subtype == "lorenz":
       r_ = jnp.vstack(
         [
-          jnp.array([-1.0, -1.0]),
-          jnp.array([-1.0, -0.0]),
-          jnp.array([-1.0, 1.0]),
-          jnp.array([0.0, -1.0]),
-          jnp.array([0.0, 0.0]),
-          jnp.array([0.0, 1.0]),
-          jnp.array([1.0, -1.0]),
-          jnp.array([1.0, 0.0]),
-          jnp.array([1.0, 1.0])
+          jnp.array([-5.0, -5.0, -5.0]),
+          jnp.array([-5.0, -5.0, 5.0]),
+          jnp.array([-5.0, 5.0, -5.0]),
+          jnp.array([-5.0, 5.0, 5.0]),
+          jnp.array([5.0, -5.0, -5.0]),
+          jnp.array([5.0, -5.0, 5.0]),
+          jnp.array([5.0, 5.0, -5.0]),
+          jnp.array([5.0, 5.0, 5.0])
         ]
       )
-      r_ = r_ * 3
+      # utils.plot_score(log_prob_fn, params, r_)
+      # breakpoint()
+
       t_array = jnp.linspace(0, T, 20)
-      utils.plot_density_and_trajectory(
+      utils.plot_high_dim_density_and_trajectory(
         forward_fn,
         inverse_fn,
         log_prob_fn,
@@ -298,9 +330,7 @@ def main(config_dict: ml_collections.ConfigDict):
         r_=r_,
         t_array=t_array,
       )
-      print("L2 error on grid: {:.3e}".format(rmse_grid_loss_fn(params, 1, 500)))
-  
-  breakpoint()
+  # breakpoint()
 
   if dim == 2:
     # this plot the distribution at t=0,1 after training
@@ -320,9 +350,20 @@ def main(config_dict: ml_collections.ConfigDict):
         jnp.array([1.0, 1.0])
       ]
     )
-    r_ = r_ * 3
-    # utils.plot_score(log_prob_fn, params, r_)
-    # breakpoint()
+    r_ = r_ + jnp.array([-3, -3]).reshape(1, -1)
+    # visualization for Gaussian mixture source distribution
+    r_ = jnp.vstack(
+      [
+        jnp.array([-5.0, 0.0]),
+        jnp.array([5.0, 0.0]),
+        jnp.array([0.0, 5.0]),
+        jnp.array([0.0, -5.0]),
+        jnp.array([3.0, 4.0]),
+        jnp.array([3.0, -4.0]),
+        jnp.array([-3.0, 4.0]),
+        jnp.array([-3.0, -4.0]),
+      ]
+    )
 
     t_array = jnp.linspace(0, T, 20)
     utils.plot_density_and_trajectory(
