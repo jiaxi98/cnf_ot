@@ -9,11 +9,89 @@ from cnf_ot.types import PRNGKey
 
 
 def kl_loss_fn(
+  model, dim: int, T: float, params: hk.Params, cond: float, rng: PRNGKey,
+  batch_size: int
+) -> Array:
+  """KL-divergence loss function.
+  KL-divergence between the normalizing flow and the reference
+  distribution.
+
+  NOTE: this loss function is used to fit multimodal distributions such as
+  Gaussian mixture
+  """
+
+  def sample_source_fn(
+    seed: PRNGKey,
+    sample_shape: int,
+  ):
+
+    # gaussian source distribution
+    # A = jnp.array([[5, 1], [1, 0.5]])
+    # B = jnp.linalg.cholesky(A)
+    # return jax.random.normal(seed, shape=(sample_shape, dim)) @ B +\
+    #   jnp.ones(dim).reshape(1, dim) * -3
+
+    # gaussian mixture source distribution
+    R = 5
+    component_indices = jax.random.choice(
+      seed, a=8, shape=(sample_shape, ), p=jnp.ones(8) / 8
+    )
+    sample_ = jnp.zeros((8, sample_shape, dim))
+    sample_ = sample_.at[0].set(
+      jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, R])
+    )
+    sample_ = sample_.at[1].set(
+      jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([R, 0.0])
+    )
+    sample_ = sample_.at[2].set(
+      jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([0.0, -R])
+    )
+    sample_ = sample_.at[3].set(
+      jax.random.normal(seed, shape=(sample_shape, dim)) + jnp.array([-R, 0.0])
+    )
+    sample_ = sample_.at[4].set(
+      jax.random.normal(seed, shape=(sample_shape, dim)) +
+      jnp.array([0.6 * R, 0.8 * R])
+    )
+    sample_ = sample_.at[5].set(
+      jax.random.normal(seed, shape=(sample_shape, dim)) +
+      jnp.array([0.6 * R, -0.8 * R])
+    )
+    sample_ = sample_.at[6].set(
+      jax.random.normal(seed, shape=(sample_shape, dim)) +
+      jnp.array([-0.6 * R, -0.8 * R])
+    )
+    sample_ = sample_.at[7].set(
+      jax.random.normal(seed, shape=(sample_shape, dim)) +
+      jnp.array([-0.6 * R, 0.8 * R])
+    )
+
+    sample = sample_[component_indices[jnp.arange(sample_shape)],
+                    jnp.arange(sample_shape)]
+    return sample
+
+  def sample_target_fn(
+    seed: PRNGKey,
+    sample_shape: int,
+  ):
+
+    return jax.random.normal(seed, shape=(sample_shape, dim)) # +\
+      # jnp.ones(dim).reshape(1, dim) * 3
+
+  samples1 = sample_source_fn(seed=rng, sample_shape=batch_size)
+  samples2 = sample_target_fn(seed=rng, sample_shape=batch_size)
+  samples = samples1 * (T - cond) / T + samples2 * cond / T
+  fake_cond_ = jnp.ones((1, )) * cond
+  log_prob = model.apply.log_prob(params, samples, cond=fake_cond_)
+  return -log_prob.mean()
+
+
+def reverse_kl_loss_fn(
   model, dim: int, T: float, beta: float, params: hk.Params, cond: float,
   rng: PRNGKey, batch_size: int
 ) -> Array:
-  """KL-divergence loss function.
-  KL-divergence between the normalizing flow and the reference distribution.
+  """Reverse KL-divergence loss function.
+  Reverse KL-divergence between the normalizing flow and the reference distribution.
   """
 
   source_prob = jax.vmap(
@@ -45,48 +123,14 @@ def kl_loss_fn(
   ).mean()
 
 
-def reverse_kl_loss_fn(
-  model, dim: int, T: float, params: hk.Params, cond: float, rng: PRNGKey,
-  batch_size: int
-) -> Array:
-  """reverse KL-divergence loss function.
-  reverse KL-divergence between the normalizing flow and the reference
-  distribution.
-  """
-
-  def sample_source_fn(
-    seed: PRNGKey,
-    sample_shape: int,
-  ):
-
-    return jax.random.normal(seed, shape=(sample_shape, dim)) *\
-      jnp.ones(dim).reshape(1, -1) +\
-      jnp.ones(dim).reshape(1, dim) * -3
-
-  def sample_target_fn(
-    seed: PRNGKey,
-    sample_shape: int,
-  ):
-
-    return jax.random.normal(seed, shape=(sample_shape, dim)) +\
-      jnp.ones(dim).reshape(1, dim) * 3
-
-  samples1 = sample_source_fn(seed=rng, sample_shape=batch_size)
-  samples2 = sample_target_fn(seed=rng, sample_shape=batch_size)
-  samples = samples1 * (T - cond) / T + samples2 * cond / T
-  fake_cond_ = jnp.ones((1, )) * cond
-  log_prob = model.apply.log_prob(params, samples, cond=fake_cond_)
-  return -log_prob.mean()
-
-
-def density_fit_rkl_loss_fn(
+def density_fit_kl_loss_fn(
   model, dim: int, T: float, params: hk.Params, rng: PRNGKey, batch_size: int
 ) -> Array:
 
-  return partial(reverse_kl_loss_fn, model, dim, T)(
+  return partial(kl_loss_fn, model, dim, T)(
     params, 0, rng, batch_size
   ) +\
-    partial(reverse_kl_loss_fn, model, dim, T)(params, T, rng, batch_size)
+    partial(kl_loss_fn, model, dim, T)(params, T, rng, batch_size)
 
 
 def potential_loss_fn(
@@ -226,31 +270,52 @@ def flow_matching_loss_fn(
       truth = -r3 * a
       x = r3[:, 0]
       y = r3[:, 1]
-      # _pi = jnp.exp(-20 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
-      #                10 * (y - 2)**2) +\
-      #       jnp.exp(-20 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
-      #                10 * (y - 2)**2) +\
-      #       jnp.exp(-20 * (x**2 + y**2 - 2)**2 - 10 * (y + 1)**2) + .01
-      # dpidx = jnp.exp(-20 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
-      #                10 * (y - 2)**2) * ((x - 6/5)**2 + (y - 6/5)**2 - .5) *\
-      #                80 * (x - 6/5) +\
-      #         jnp.exp(-20 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
-      #                 10 * (y - 2)**2) * ((x + 6/5)**2 + (y - 6/5)**2 - .5) *\
-      #                80 * (x + 6/5) +\
-      #         jnp.exp(-20 * (x**2 + y**2 - 2)**2 - 10 * (y + 1)**2) *\
-      #                 (x**2 + y**2 - 2) * 80 * x
-      # dpidy = jnp.exp(-20 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
-      #                10 * (y - 2)**2) * (((x - 6/5)**2 + (y - 6/5)**2 - .5) *
-      #                80 * (y - 6/5) + 20 * (y - 2)) +\
-      #         jnp.exp(-20 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
-      #                 10 * (y - 2)**2) * (((x + 6/5)**2 + (y - 6/5)**2 - .5) *
-      #                80 * (x + 6/5) + 20 * (y - 2)) +\
-      #         jnp.exp(-20 * (x**2 + y**2 - 2)**2 - 10 * (y + 1)**2) *\
-      #                 ((x**2 + y**2 - 2) * 80 * y + 20 * (y + 1))
+      r1 = 4
+      r2 = 4
+      # _pi = jnp.exp(-r1/4 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+      #                r2/2 * (y - 2)**2) +\
+      #       jnp.exp(-r1/4 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+      #                r2/2 * (y - 2)**2) +\
+      #       jnp.exp(-r1/4 * (x**2 + y**2 - 2)**2 - r2/2 * (y + 1)**2) + .01
+      # dpidx = jnp.exp(-r1/4 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+      #                r2/2 * (y - 2)**2) * ((x - 6/5)**2 + (y - 6/5)**2 - .5) *\
+      #                r1 * (x - 6/5) +\
+      #         jnp.exp(-r1/4 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+      #                 r2/2 * (y - 2)**2) * ((x + 6/5)**2 + (y - 6/5)**2 - .5) *\
+      #                r1 * (x + 6/5) +\
+      #         jnp.exp(-r1/4 * (x**2 + y**2 - 2)**2 - r2/2 * (y + 1)**2) *\
+      #                 (x**2 + y**2 - 2) * r1 * x
+      # dpidy = jnp.exp(-r1/4 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+      #                r2/2 * (y - 2)**2) * (((x - 6/5)**2 + (y - 6/5)**2 - .5) *
+      #                r1 * (y - 6/5) + r2 * (y - 2)) +\
+      #         jnp.exp(-r1/4 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+      #                 r2/2 * (y - 2)**2) * (((x + 6/5)**2 + (y - 6/5)**2 - .5) *
+      #                r1 * (y - 6/5) + r2 * (y - 2)) +\
+      #         jnp.exp(-r1/4 * (x**2 + y**2 - 2)**2 - r2/2 * (y + 1)**2) *\
+      #                 ((x**2 + y**2 - 2) * r1 * y + r2 * (y + 1))
       # truth = -jnp.concat([(dpidx/_pi)[:, None], (dpidy/_pi)[:, None]], axis=1)
-      grad_x = -(x**2 + y**2 - 2) * 8 * x
-      grad_y = -(x**2 + y**2 - 2) * 8 * y - 2 * (y + 1)**2
-      truth = -jnp.concat([grad_x[:, None], grad_y[:, None]], axis=1)
+      y0 = 8/5
+      x0 = 3/2
+      _pi = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
+                    r2/2 * (y - y0)**2) +\
+            jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
+                    r2/2 * (y - y0)**2) + 1e-20
+      dpidx = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
+                    r2/2 * (y - y0)**2) * ((x - x0)**2 + (y - 6/5)**2 - .5) *\
+                    r1 * (x - x0) +\
+              jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
+                      r2/2 * (y - y0)**2) * ((x + x0)**2 + (y - 6/5)**2 - .5) *\
+                    r1 * (x + x0)
+      dpidy = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
+                    r2/2 * (y - y0)**2) * (((x - x0)**2 + (y - 6/5)**2 - .5) *
+                    r1 * (y - 6/5) + r2 * (y - y0)) +\
+              jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
+                      r2/2 * (y - y0)**2) * (((x + x0)**2 + (y - 6/5)**2 - .5) *
+                    r1 * (y - 6/5) + r2 * (y - y0))
+      truth = -jnp.concat([(dpidx/_pi)[:, None], (dpidy/_pi)[:, None]], axis=1)
+      # grad_x = -(x**2 + y**2 - 4) * r1 * x
+      # grad_y = -(x**2 + y**2 - 4) * r1 * y - r2 * (y + 1)
+      # truth = jnp.concat([grad_x[:, None], grad_y[:, None]], axis=1)
       truth *= a
     elif subtype == "nongradient":
       if dim != 2:
@@ -258,6 +323,15 @@ def flow_matching_loss_fn(
       J = jnp.array([[0, 1], [-1, 0]])
       delta = 0.5
       truth = -r3 * a + jnp.dot(r3, J) * delta
+    elif subtype == "lorenz":
+      if dim != 3:
+        raise Exception("Lorenz dynamics is only defined for 3 dim!")
+      truth = jnp.zeros((batch_size, dim))
+      # _r is a parameter to change the scale of the dynamics
+      _r = 10
+      truth = truth.at[:, 0].set(10 * (r3[:, 1] - r3[:, 0]))
+      truth = truth.at[:, 1].set(_r * r3[:, 0] * (28/_r - r3[:, 2]) - r3[:, 1])
+      truth = truth.at[:, 2].set(_r * r3[:, 0] * r3[:, 1] - r3[:, 2] * 8/3)
       
     return jnp.mean((velocity - truth)**2) * dim / 2
 
@@ -273,7 +347,7 @@ def ot_loss_fn(
   Monte-Carlo integration of the kinetic energy along the interval [0, 1]
 
   """
-  loss = _lambda * partial(density_fit_rkl_loss_fn, model, dim,
+  loss = _lambda * partial(density_fit_kl_loss_fn, model, dim,
                            T)(params, rng, batch_size)
   t_batch = jax.random.uniform(rng, (t_batch_size, ))
   #t_batch = jnp.linspace(0.05, 0.95, t_batch_size)
@@ -297,7 +371,8 @@ def rwpo_loss_fn(
   """
 
   a = 0
-  loss = _lambda * partial(kl_loss_fn, model, dim, T, beta)(params, 0, rng, batch_size) +\
+  loss = _lambda * partial(reverse_kl_loss_fn, model, dim, T, beta)\
+    (params, 0, rng, batch_size) +\
     partial(potential_loss_fn, model, dim, a, subtype)(params, T, rng, batch_size)
   t_batch = jax.random.uniform(rng, (t_batch_size, )) * T
   for t in t_batch:
@@ -316,7 +391,8 @@ def fp_loss_fn(
   """
 
   beta = 1  # the initial Gaussian distribution has variance 4
-  loss = _lambda * partial(kl_loss_fn, model, dim, T, beta)(params, 0, rng, batch_size)
+  loss = _lambda * partial(reverse_kl_loss_fn, model, dim, T, beta)\
+    (params, 0, rng, batch_size)
   t_batch_size = 2
   t_batch = jax.random.uniform(rng, (t_batch_size, )) * T
   for t in t_batch:
