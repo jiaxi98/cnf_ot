@@ -26,10 +26,10 @@ def kl_loss_fn(
   ):
 
     # gaussian source distribution
-    # A = jnp.array([[5, 1], [1, 0.5]])
-    # B = jnp.linalg.cholesky(A)
-    # return jax.random.normal(seed, shape=(sample_shape, dim)) @ B +\
-    #   jnp.ones(dim).reshape(1, dim) * -3
+    A = jnp.array([[5, 1], [1, 0.5]])
+    B = jnp.linalg.cholesky(A)
+    return jax.random.normal(seed, shape=(sample_shape, dim)) @ B +\
+      jnp.ones(dim).reshape(1, dim) * -3
 
     # gaussian mixture source distribution
     R = 5
@@ -328,7 +328,7 @@ def flow_matching_loss_fn(
         raise Exception("Lorenz dynamics is only defined for 3 dim!")
       truth = jnp.zeros((batch_size, dim))
       # _r is a parameter to change the scale of the dynamics
-      _r = 10
+      _r = 4
       truth = truth.at[:, 0].set(10 * (r3[:, 1] - r3[:, 0]))
       truth = truth.at[:, 1].set(_r * r3[:, 0] * (28/_r - r3[:, 2]) - r3[:, 1])
       truth = truth.at[:, 2].set(_r * r3[:, 0] * r3[:, 1] - r3[:, 2] * 8/3)
@@ -393,7 +393,7 @@ def fp_loss_fn(
   beta = 1  # the initial Gaussian distribution has variance 4
   loss = _lambda * partial(reverse_kl_loss_fn, model, dim, T, beta)\
     (params, 0, rng, batch_size)
-  t_batch_size = 2
+  # t_batch_size = 2
   t_batch = jax.random.uniform(rng, (t_batch_size, )) * T
   for t in t_batch:
     loss += partial(flow_matching_loss_fn, model, dim, a, sigma, subtype, dt,
