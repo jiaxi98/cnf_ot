@@ -8,7 +8,7 @@ import numpy as np
 from matplotlib import cm
 from matplotlib import pyplot as plt
 
-from cnf_ot.types import Batch, OptState, PRNGKey
+from cnf_ot.types import PRNGKey
 
 
 def calc_kinetic_energy(
@@ -19,6 +19,8 @@ def calc_kinetic_energy(
   t_size: int = 10000,
   dim: int = 1
 ):
+  """Calculate kinetic energy via Monte Carlo sampling
+  """
 
   t_array = jnp.linspace(0, 1, t_size)
   e_kin = 0
@@ -52,6 +54,8 @@ def calc_score_kinetic_energy(
   batch_size: int = 65536,
   t_size: int = 10000,
 ):
+  """Calculate kinetic energy with velocity corrected by score function
+  """
 
   t_array = jnp.linspace(0, T, t_size)
   e_kin = 0
@@ -88,11 +92,14 @@ def calc_score_kinetic_energy(
   return e_kin / t_size * dim
 
 
-def plot_score(
+def plot_velocity_field(
   log_prob_fn: callable,
   params: hk.Params,
   r_: jnp.array,
+  _score: str = False,
 ):
+  """Visualize the velocity field for debug
+  """
 
   plt.clf()
   fig, ax = plt.subplots(1, 1, figsize=(5, 5))
@@ -105,28 +112,69 @@ def plot_score(
   XY = jnp.hstack([X.reshape(100**2, 1), Y.reshape(100**2, 1)])
   dim = r_.shape[-1]
 
-  for i in range(1):
-    fake_cond_ = np.ones((1, )) * i * .1
+  if _score:
+    fake_cond_ = np.zeros((1, ))
     log_prob = log_prob_fn(params, XY, cond=fake_cond_)
     ax.imshow(jnp.exp(log_prob.reshape(100, 100)), cmap=cm.viridis)
-    score = jnp.zeros((r_.shape[0], dim))
+    field = jnp.zeros((r_.shape[0], dim))
     dx = 0.01
     for i in range(dim):
       dr = jnp.zeros((1, dim))
       dr = dr.at[0, i].set(dx / 2)
       log_p1 = log_prob_fn(params, r_ + dr, cond=jnp.ones(1) * 0)
       log_p2 = log_prob_fn(params, r_ - dr, cond=jnp.ones(1) * 0)
-      score = score.at[:, i].set((log_p1 - log_p2) / dx)
+      field = field.at[:, i].set((log_p1 - log_p2) / dx)
 
-    ax.quiver(
-      (r_[:, 0] + x_max) / 2 / x_max * 100,
-      (r_[:, 1] + x_max) / 2 / x_max * 100, score[:, 0], score[:, 1]
-    )
-    ax.axis("off")
+  else:
+    # debug for the ``smiling'' distribution
+    # NOTE: ploting the velocity fields for debugging the experiments is
+    # really powerful:
+    # * The numerical value 1e-20 is really crucial for
+    # the log-sum-exp formula for the distribution.
+    # * The range of the plotting region is also important as the potential
+    # function is fourth-order which blows up quickly.
+    r1 = 4
+    r2 = 4
+    x_min = -2.5
+    x_max = 2.5
+    y_min = 1
+    y_max = 2
+    nx = 10
+    x = np.linspace(x_min, x_max, nx)
+    y = np.linspace(y_min, y_max, nx)
+    X, Y = np.meshgrid(x, y)
+    r_ = jnp.hstack([X.reshape(nx**2, 1), Y.reshape(nx**2, 1)])
+    x = r_[:, 0]
+    y = r_[:, 1]
+    y0 = 8/5
+    x0 = 3/2
+    _pi = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
+                  r2/2 * (y - y0)**2) +\
+          jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
+                  r2/2 * (y - y0)**2) + 1e-20
+    dpidx = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
+                  r2/2 * (y - y0)**2) * ((x - x0)**2 + (y - 6/5)**2 - .5) *\
+                  r1 * (x - x0) +\
+            jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
+                    r2/2 * (y - y0)**2) * ((x + x0)**2 + (y - 6/5)**2 - .5) *\
+                  r1 * (x + x0)
+    dpidy = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
+                  r2/2 * (y - y0)**2) * (((x - x0)**2 + (y - 6/5)**2 - .5) *
+                  r1 * (y - 6/5) + r2 * (y - y0)) +\
+            jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
+                    r2/2 * (y - y0)**2) * (((x + x0)**2 + (y - 6/5)**2 - .5) *
+                  r1 * (y - 6/5) + r2 * (y - y0))
+    field = -jnp.concat([(dpidx/_pi)[:, None], (dpidy/_pi)[:, None]], axis=1)
+    # grad_x = -(x**2 + y**2 - 4) * r1 * x
+    # grad_y = -(x**2 + y**2 - 4) * r1 * y - r2 * (y + 1)
+    # field = jnp.concat([grad_x[:, None], grad_y[:, None]], axis=1)
 
-  fig.tight_layout(pad=0.2)
+  ax.quiver(r_[:, 0], r_[:, 1], field[:, 0], field[:, 1])
+  # ax.axis("off")
+  # fig.tight_layout(pad=0.2)
   # plt.subplots_adjust(hspace=0.1)
-  plt.savefig("results/fig/score.pdf")
+  plt.savefig("results/fig/field.pdf")
+  plt.clf()
 
 
 def plot_distribution_trajectory(
@@ -141,6 +189,10 @@ def plot_distribution_trajectory(
   var2: float,
   fig_name: str = "dist_traj"
 ):
+  """Deprecated ploting function
+  TODO: can delete
+  """
+
   t_array = jnp.linspace(0.05, 0.95, 6)
   cmap = plt.cm.Reds
   norm = mcolors.Normalize(vmin=-.5, vmax=1.5)
@@ -256,16 +308,18 @@ def plot_density_and_trajectory(
   plt.clf()
   fig, axs = plt.subplots(2, 5, figsize=(5, 2))
   axs = axs.flatten()
-  x_min = -5
-  x_max = 5
+  x_min = -10
+  x_max = 10
+  # x_min = -3
+  # x_max = 3
   x = np.linspace(x_min, x_max, 100)
   y = np.linspace(x_min, x_max, 100)
   X, Y = np.meshgrid(x, y)
   XY = jnp.hstack([X.reshape(100**2, 1), Y.reshape(100**2, 1)])
   xi = inverse_fn(params, r_, jnp.zeros(1))
 
-  for i in range(10):
-    fake_cond_ = np.ones((1, )) * i * .1
+  for i in range(len(t_array)):
+    fake_cond_ = t_array[i] * jnp.ones((1, ))
     log_prob = log_prob_fn(params, XY, cond=fake_cond_)
     axs[i].imshow(jnp.exp(log_prob.reshape(100, 100)), cmap=cm.viridis)
     for t in t_array:
@@ -273,6 +327,48 @@ def plot_density_and_trajectory(
       axs[i].scatter(
         (r_[:, 0] + x_max) / 2 / x_max * 100,
         (r_[:, 1] + x_max) / 2 / x_max * 100,
+        c="red",
+        marker='.',
+        s=.1
+      )
+    axs[i].axis("off")
+
+  fig.tight_layout(pad=0.2)
+  # plt.subplots_adjust(hspace=0.1)
+  plt.savefig("results/fig/traj.pdf")
+
+
+def plot_high_dim_density_and_trajectory(
+  forward_fn: callable,
+  inverse_fn: callable,
+  log_prob_fn: callable,
+  params: hk.Params,
+  r_: jnp.array,
+  t_array: jnp.array,
+):
+
+  plt.clf()
+  fig, axs = plt.subplots(2, 5, figsize=(5, 2))
+  axs = axs.flatten()
+  x_min = -10
+  x_max = 10
+  x = np.linspace(x_min, x_max, 100)
+  y = np.linspace(x_min, x_max, 100)
+  X, Y = np.meshgrid(x, y)
+  XY = jnp.hstack(
+    [X.reshape(100**2, 1), Y.reshape(100**2, 1), jnp.zeros((100**2, 1))]
+  )
+  xi = inverse_fn(params, r_, jnp.zeros(1))
+
+  for i in range(10):
+    fake_cond_ = jnp.ones((1, )) * i * .1
+    log_prob = log_prob_fn(params, XY, cond=fake_cond_)
+    axs[i].imshow(jnp.exp(log_prob.reshape(100, 100)), cmap=cm.viridis)
+    for t in t_array:
+      r_ = forward_fn(params, xi, jnp.ones(1) * t)
+      axs[i].scatter(
+        (r_[:, 0] + x_max) / 2 / x_max * 100,
+        (r_[:, 2] + x_max) / 2 / x_max * 100,
         c="red",
         marker='.',
         s=.1
