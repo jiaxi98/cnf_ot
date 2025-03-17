@@ -309,11 +309,13 @@ def plot_density_and_trajectory(
   fig, axs = plt.subplots(2, 5, figsize=(5, 2))
   axs = axs.flatten()
   x_min = -10
-  x_max = 10
+  x_max = 3
+  y_min = -5
+  y_max = 3
   # x_min = -3
   # x_max = 3
   x = np.linspace(x_min, x_max, 100)
-  y = np.linspace(x_min, x_max, 100)
+  y = np.linspace(y_min, y_max, 100)
   X, Y = np.meshgrid(x, y)
   XY = jnp.hstack([X.reshape(100**2, 1), Y.reshape(100**2, 1)])
   xi = inverse_fn(params, r_, jnp.zeros(1))
@@ -325,15 +327,18 @@ def plot_density_and_trajectory(
     for t in t_array:
       r_ = forward_fn(params, xi, jnp.ones(1) * t)
       axs[i].scatter(
-        (r_[:, 0] + x_max) / 2 / x_max * 100,
-        (r_[:, 1] + x_max) / 2 / x_max * 100,
+        (r_[:, 0] - x_min) / (x_max - x_min) * 100,
+        (r_[:, 1] - y_min) / (y_max - y_min) * 100,
         c="red",
         marker='.',
         s=.1
       )
     axs[i].axis("off")
+    axs[i].set_xlabel("x")
+    axs[i].set_xlabel("y")
+    axs[i].set_title("t = {:.1f}".format(t_array[i]), fontsize=5)
 
-  fig.tight_layout(pad=0.2)
+  fig.tight_layout(pad=-0.1)
   # plt.subplots_adjust(hspace=0.1)
   plt.savefig("results/fig/traj.pdf")
 

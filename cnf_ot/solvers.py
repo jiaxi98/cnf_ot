@@ -119,6 +119,10 @@ def main(config_dict: ml_collections.ConfigDict):
       #   pot = potential_loss_fn(params, T, eval_rng, batch_size)
       #   kin = loss - rKL * _lambda - pot
       #   desc_str += f"{KL=:.4f} | {pot=:.2f} | {kin=:.2f}"
+      
+      # elif _type == "fp":
+      #   rKL_loss = _lambda * partial(reverse_kl_loss_fn, model, dim, T, beta)\
+      #     (params, 0, rng, batch_size)
 
       iters.set_description_str(desc_str)
   # jax.profiler.stop_trace()
@@ -164,7 +168,7 @@ def main(config_dict: ml_collections.ConfigDict):
     if subtype == "quadratic":
       # NOTE: this is the true value for quadratic potential and Gaussian IC
       true_val = dim * (1 + jnp.log(T + 1)) / beta
-    elif subtype == "double-well":
+    elif subtype == "double_well":
       if a == 0.5:
         file_name = 'data/fcn4a5_interp.pkl'
       elif a == 1.0:
@@ -188,16 +192,28 @@ def main(config_dict: ml_collections.ConfigDict):
           jnp.sqrt(2 / beta * (T + 1))
         y = jax.random.normal(_rng, shape=(x_batch, y_batch, 2)) *\
           jnp.sqrt(2 / beta * T) + x.reshape(-1, 1, 2)
+        if subtype == "quadratic":
+          def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
+            return jnp.sum(r**2, axis=1) / 2
+        elif subtype == "double_well":
+          def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
+            return (
+              jnp.linalg.norm(r - a * jnp.ones(dim).reshape(1, -1), axis=1) *
+              jnp.linalg.norm(r + a * jnp.ones(dim).reshape(1, -1), axis=1) / 2
+            )**2
+        elif subtype == "obstacle":
+          def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
+            return 50 * jnp.exp(-jnp.sum(r**2, axis=1) / 2)
         return -2 / beta * jnp.log(
           jnp.exp(
-            applications.potential_fn(
+            potential_fn(
               y.reshape(-1, 2)).reshape((x_batch, y_batch)
             ) *\
             -beta / 2
           ).mean(axis=1)
         ).mean()
 
-      fake_cond_ = jnp.ones((1, ))
+      fake_cond_ = jnp.ones((1, )) * T
       prob1 = jnp.exp(log_prob_fn(params, XY, cond=fake_cond_))
       prob2 = target_prob(XY)
       print(jnp.sum((prob1 - prob2)**2))
@@ -206,7 +222,7 @@ def main(config_dict: ml_collections.ConfigDict):
       plt.imshow(prob1.reshape(100, 100))
       plt.subplot(122)
       plt.imshow(prob2.reshape(100, 100))
-      plt.savefig("results/fig/double-well.pdf")
+      plt.savefig("results/fig/double_well.pdf")
       true_val = cost_rwpo(eval_rng, 100, 1000)
     print(
       "total energy: {:.3f}|relative err: {:.3e}".format(
@@ -284,7 +300,7 @@ def main(config_dict: ml_collections.ConfigDict):
       )
 
       # the following is used for debugging the complex target distributions
-      utils.plot_velocity_field(log_prob_fn, params, r_)
+      # utils.plot_velocity_field(log_prob_fn, params, r_)
       r1 = 8
       r2 = 8
       x_min = -3
@@ -321,7 +337,7 @@ def main(config_dict: ml_collections.ConfigDict):
       # utils.plot_score(log_prob_fn, params, r_)
       # breakpoint()
 
-      t_array = jnp.linspace(0, T, 20)
+      t_array = jnp.linspace(0, T, 10)
       utils.plot_high_dim_density_and_trajectory(
         forward_fn,
         inverse_fn,
@@ -337,35 +353,55 @@ def main(config_dict: ml_collections.ConfigDict):
     # as well as the error of the learned mapping at t=0, 1
     # based on grid evaluation
 
-    r_ = jnp.vstack(
-      [
-        jnp.array([-1.0, -1.0]),
-        jnp.array([-1.0, -0.0]),
-        jnp.array([-1.0, 1.0]),
-        jnp.array([0.0, -1.0]),
-        jnp.array([0.0, 0.0]),
-        jnp.array([0.0, 1.0]),
-        jnp.array([1.0, -1.0]),
-        jnp.array([1.0, 0.0]),
-        jnp.array([1.0, 1.0])
-      ]
-    )
-    r_ = r_ + jnp.array([-3, -3]).reshape(1, -1)
-    # visualization for Gaussian mixture source distribution
-    r_ = jnp.vstack(
-      [
-        jnp.array([-5.0, 0.0]),
-        jnp.array([5.0, 0.0]),
-        jnp.array([0.0, 5.0]),
-        jnp.array([0.0, -5.0]),
-        jnp.array([3.0, 4.0]),
-        jnp.array([3.0, -4.0]),
-        jnp.array([-3.0, 4.0]),
-        jnp.array([-3.0, -4.0]),
-      ]
-    )
-
-    t_array = jnp.linspace(0, T, 20)
+    if _type == "ot":
+      # visualization for Gaussian source distribution for ot
+      r_ = jnp.vstack(
+        [
+          jnp.array([-1.0, -1.0]),
+          jnp.array([-1.0, 1.0]),
+          jnp.array([1.0, -1.0]),
+          jnp.array([1.0, 1.0])
+        ]
+      )
+      r_ = r_ + jnp.array([-3, -3]).reshape(1, -1)
+      # visualization for Gaussian mixture source distribution for ot
+      # r_ = jnp.vstack(
+      #   [
+      #     jnp.array([-5.0, 0.0]),
+      #     jnp.array([5.0, 0.0]),
+      #     jnp.array([0.0, 5.0]),
+      #     jnp.array([0.0, -5.0]),
+      #     jnp.array([3.0, 4.0]),
+      #     jnp.array([3.0, -4.0]),
+      #     jnp.array([-3.0, 4.0]),
+      #     jnp.array([-3.0, -4.0]),
+      #   ]
+      # )
+    elif _type == "rwpo":
+      # visualization for Gaussian source distribution for rwpo
+      r_ = jnp.vstack(
+        [
+          jnp.array([-1.0, -1.0]),
+          jnp.array([-1.0, -0.0]),
+          jnp.array([-1.0, 1.0]),
+          jnp.array([0.0, -1.0]),
+          jnp.array([0.0, 0.0]),
+          jnp.array([0.0, 1.0]),
+          jnp.array([1.0, -1.0]),
+          jnp.array([1.0, 0.0]),
+          jnp.array([1.0, 1.0])
+        ]
+      )
+    elif _type == "fp":
+      r_ = jnp.vstack(
+        [
+          jnp.array([-1.0, -1.0]),
+          jnp.array([-1.0, 1.0]),
+          jnp.array([1.0, -1.0]),
+          jnp.array([1.0, 1.0])
+        ]
+      )
+    t_array = jnp.linspace(T/10, T, 10)
     utils.plot_density_and_trajectory(
       forward_fn,
       inverse_fn,
