@@ -308,9 +308,9 @@ def plot_density_and_trajectory(
   plt.clf()
   fig, axs = plt.subplots(2, 5, figsize=(5, 2))
   axs = axs.flatten()
-  x_min = -10
+  x_min = -6
   x_max = 3
-  y_min = -5
+  y_min = -6
   y_max = 3
   # x_min = -3
   # x_max = 3
@@ -336,9 +336,9 @@ def plot_density_and_trajectory(
     axs[i].axis("off")
     axs[i].set_xlabel("x")
     axs[i].set_xlabel("y")
-    axs[i].set_title("t = {:.1f}".format(t_array[i]), fontsize=5)
+    axs[i].set_title("t = {:.1f}".format(t_array[i]), fontsize=5, y=-0.2)
 
-  fig.tight_layout(pad=-0.1)
+  fig.tight_layout()
   # plt.subplots_adjust(hspace=0.1)
   plt.savefig("results/fig/traj.pdf")
 
