@@ -1,6 +1,6 @@
 # cnf_ot
 <!-- TODO: change the repo name, maybe cnf_mfc? -->
-Code base for solving various mean-field controls (MFC) using conditional normalizing flow
+Code base for "Variational conditional normalizing flows for computing second-order mean field control problems"
 
 ## Quick start
 1. Run the following script to prepare the environment

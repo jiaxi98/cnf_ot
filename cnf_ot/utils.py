@@ -306,14 +306,25 @@ def plot_density_and_trajectory(
 ):
 
   plt.clf()
-  fig, axs = plt.subplots(2, 5, figsize=(5, 2))
+  fig, axs = plt.subplots(
+    t_array.shape[0]//5, 5, figsize=(5, t_array.shape[0]//5)
+  )
   axs = axs.flatten()
-  x_min = -6
-  x_max = 3
-  y_min = -6
-  y_max = 3
-  # x_min = -3
+  # parameter for the visualization of ot with gaussian
+  # x_min = -6
   # x_max = 3
+  # y_min = -6
+  # y_max = 3
+  # parameter for the visualization of ot with gaussian mixture
+  x_min = -7.5
+  x_max = 7.5
+  y_min = -7.5
+  y_max = 7.5
+  # parameter for the visualization of rwpo
+  # x_min = -4
+  # x_max = 4
+  # y_min = -4
+  # y_max = 4
   x = np.linspace(x_min, x_max, 100)
   y = np.linspace(y_min, y_max, 100)
   X, Y = np.meshgrid(x, y)
@@ -323,15 +334,14 @@ def plot_density_and_trajectory(
   for i in range(len(t_array)):
     fake_cond_ = t_array[i] * jnp.ones((1, ))
     log_prob = log_prob_fn(params, XY, cond=fake_cond_)
-    axs[i].imshow(jnp.exp(log_prob.reshape(100, 100)), cmap=cm.viridis)
+    axs[i].imshow(jnp.exp(log_prob.reshape(100, 100)), cmap="Greens")
     for t in t_array:
       r_ = forward_fn(params, xi, jnp.ones(1) * t)
       axs[i].scatter(
         (r_[:, 0] - x_min) / (x_max - x_min) * 100,
         (r_[:, 1] - y_min) / (y_max - y_min) * 100,
         c="red",
-        marker='.',
-        s=.1
+        s=.5
       )
     axs[i].axis("off")
     axs[i].set_xlabel("x")

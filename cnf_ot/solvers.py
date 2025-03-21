@@ -175,6 +175,7 @@ def main(config_dict: ml_collections.ConfigDict):
         file_name = 'data/fcn4a1_interp.pkl'
       with open(file_name, 'rb') as f:
         interpolators = pickle.load(f)
+        # NOTE: this function can only be called with scipy==1.14.1
         target_prob = interpolators['rhoT_interp']
 
       x_min = -2
@@ -357,41 +358,38 @@ def main(config_dict: ml_collections.ConfigDict):
       # visualization for Gaussian source distribution for ot
       r_ = jnp.vstack(
         [
-          jnp.array([-1.0, -1.0]),
-          jnp.array([-1.0, 1.0]),
-          jnp.array([1.0, -1.0]),
-          jnp.array([1.0, 1.0])
+          jnp.array([-2.0, -0.5]),
+          jnp.array([-2.0, 0.5]),
+          jnp.array([2.0, -0.5]),
+          jnp.array([2.0, 0.5])
         ]
       )
       r_ = r_ + jnp.array([-3, -3]).reshape(1, -1)
       # visualization for Gaussian mixture source distribution for ot
-      # r_ = jnp.vstack(
-      #   [
-      #     jnp.array([-5.0, 0.0]),
-      #     jnp.array([5.0, 0.0]),
-      #     jnp.array([0.0, 5.0]),
-      #     jnp.array([0.0, -5.0]),
-      #     jnp.array([3.0, 4.0]),
-      #     jnp.array([3.0, -4.0]),
-      #     jnp.array([-3.0, 4.0]),
-      #     jnp.array([-3.0, -4.0]),
-      #   ]
-      # )
+      r_ = jnp.vstack(
+        [
+          jnp.array([-5.0, 0.0]),
+          jnp.array([5.0, 0.0]),
+          jnp.array([0.0, 5.0]),
+          jnp.array([0.0, -5.0]),
+          jnp.array([3.0, 4.0]),
+          jnp.array([3.0, -4.0]),
+          jnp.array([-3.0, 4.0]),
+          jnp.array([-3.0, -4.0]),
+        ]
+      )
+      t_array = jnp.linspace(T/10, T, 10)
     elif _type == "rwpo":
       # visualization for Gaussian source distribution for rwpo
       r_ = jnp.vstack(
         [
-          jnp.array([-1.0, -1.0]),
-          jnp.array([-1.0, -0.0]),
-          jnp.array([-1.0, 1.0]),
-          jnp.array([0.0, -1.0]),
-          jnp.array([0.0, 0.0]),
-          jnp.array([0.0, 1.0]),
-          jnp.array([1.0, -1.0]),
-          jnp.array([1.0, 0.0]),
-          jnp.array([1.0, 1.0])
+          jnp.array([-3.0, -3.0]),
+          jnp.array([-3.0, 3.0]),
+          jnp.array([3.0, -3.0]),
+          jnp.array([3.0, 3.0])
         ]
       )
+      t_array = jnp.linspace(0, T, 5)
     elif _type == "fp":
       r_ = jnp.vstack(
         [
@@ -401,7 +399,7 @@ def main(config_dict: ml_collections.ConfigDict):
           jnp.array([1.0, 1.0])
         ]
       )
-    t_array = jnp.linspace(T/10, T, 10)
+      t_array = jnp.linspace(T/10, T, 10)
     utils.plot_density_and_trajectory(
       forward_fn,
       inverse_fn,
