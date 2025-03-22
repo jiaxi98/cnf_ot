@@ -3,13 +3,19 @@ bin/
 lib/
 pyvenv.cfg
 
-*/__pycache__/
+*__pycache__/
 */.pytest_cache/
 */.tox/
 */.mypy_cache/
 */.mypy/
 */.coverage
 */.coverage.*
+*.swp
 
 results
 share
+runs
+
+format.sh
+tensorboard.sh
+test.py
