@@ -86,6 +86,47 @@ def kl_loss_fn(
   return -log_prob.mean()
 
 
+# This function is used for debug. Try to see if the loss function of the
+# simple ot problem is decreasing over optimization.
+def ot_reverse_kl_loss_fn(
+  model, dim: int, T: float, params: hk.Params, rng: PRNGKey,
+  batch_size: int
+) -> Array:
+  
+  target_prob1 = jax.vmap(
+    partial(
+      jax.scipy.stats.multivariate_normal.pdf,
+      mean=jnp.ones(dim) * 3,
+      cov=jnp.eye(dim)
+    )
+  )
+  target_prob2 = jax.vmap(
+    partial(
+      jax.scipy.stats.multivariate_normal.pdf,
+      mean=jnp.zeros(dim),
+      cov=jnp.eye(dim)
+    )
+  )
+
+  fake_cond_ = jnp.ones((batch_size, 1)) * 0
+  samples, log_prob = model.apply.sample_and_log_prob(
+    params,
+    cond=fake_cond_,
+    seed=rng,
+    sample_shape=(batch_size, ),
+  )
+  loss = (log_prob - jnp.log(target_prob1(samples))).mean()
+  fake_cond_ = jnp.ones((batch_size, 1))
+  samples, log_prob = model.apply.sample_and_log_prob(
+    params,
+    cond=fake_cond_,
+    seed=rng,
+    sample_shape=(batch_size, ),
+  )
+  loss += (log_prob - jnp.log(target_prob2(samples))).mean()
+  return loss
+  
+
 def reverse_kl_loss_fn(
   model, dim: int, T: float, beta: float, params: hk.Params, cond: float,
   rng: PRNGKey, batch_size: int
@@ -270,8 +311,8 @@ def flow_matching_loss_fn(
       truth = -r3 * a
       x = r3[:, 0]
       y = r3[:, 1]
-      r1 = 4
-      r2 = 4
+      # r1 = 4
+      # r2 = 2
       # _pi = jnp.exp(-r1/4 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
       #                r2/2 * (y - 2)**2) +\
       #       jnp.exp(-r1/4 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
@@ -282,7 +323,7 @@ def flow_matching_loss_fn(
       #                r1 * (x - 6/5) +\
       #         jnp.exp(-r1/4 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
       #                 r2/2 * (y - 2)**2) * ((x + 6/5)**2 + (y - 6/5)**2 - .5) *\
-      #                r1 * (x + 6/5) +\
+      #                k1 * (x + 6/5) +\
       #         jnp.exp(-r1/4 * (x**2 + y**2 - 2)**2 - r2/2 * (y + 1)**2) *\
       #                 (x**2 + y**2 - 2) * r1 * x
       # dpidy = jnp.exp(-r1/4 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
@@ -294,28 +335,28 @@ def flow_matching_loss_fn(
       #         jnp.exp(-r1/4 * (x**2 + y**2 - 2)**2 - r2/2 * (y + 1)**2) *\
       #                 ((x**2 + y**2 - 2) * r1 * y + r2 * (y + 1))
       # truth = -jnp.concat([(dpidx/_pi)[:, None], (dpidy/_pi)[:, None]], axis=1)
-      y0 = 8/5
-      x0 = 3/2
-      _pi = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
-                    r2/2 * (y - y0)**2) +\
-            jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
-                    r2/2 * (y - y0)**2) + 1e-20
-      dpidx = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
-                    r2/2 * (y - y0)**2) * ((x - x0)**2 + (y - 6/5)**2 - .5) *\
-                    r1 * (x - x0) +\
-              jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
-                      r2/2 * (y - y0)**2) * ((x + x0)**2 + (y - 6/5)**2 - .5) *\
-                    r1 * (x + x0)
-      dpidy = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
-                    r2/2 * (y - y0)**2) * (((x - x0)**2 + (y - 6/5)**2 - .5) *
-                    r1 * (y - 6/5) + r2 * (y - y0)) +\
-              jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
-                      r2/2 * (y - y0)**2) * (((x + x0)**2 + (y - 6/5)**2 - .5) *
-                    r1 * (y - 6/5) + r2 * (y - y0))
-      truth = -jnp.concat([(dpidx/_pi)[:, None], (dpidy/_pi)[:, None]], axis=1)
-      # grad_x = -(x**2 + y**2 - 4) * r1 * x
-      # grad_y = -(x**2 + y**2 - 4) * r1 * y - r2 * (y + 1)
-      # truth = jnp.concat([grad_x[:, None], grad_y[:, None]], axis=1)
+      # y0 = 8/5
+      # x0 = 3/2
+      # _pi = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
+      #               r2/2 * (y - y0)**2) + 1e-20# +\
+      #       # jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
+      #       #         r2/2 * (y - y0)**2) + 1e-20
+      # dpidx = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
+      #               r2/2 * (y - y0)**2) * ((x - x0)**2 + (y - 6/5)**2 - .5) *\
+      #               r1 * (x - x0) # +\
+      #         # jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
+      #         #         r2/2 * (y - y0)**2) * ((x + x0)**2 + (y - 6/5)**2 - .5) *\
+      #         #       r1 * (x + x0)
+      # dpidy = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
+      #               r2/2 * (y - y0)**2) * (((x - x0)**2 + (y - 6/5)**2 - .5) *
+      #               r1 * (y - 6/5) + r2 * (y - y0)) # +\
+      #         # jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
+      #         #         r2/2 * (y - y0)**2) * (((x + x0)**2 + (y - 6/5)**2 - .5) *
+      #         #       r1 * (y - 6/5) + r2 * (y - y0))
+      # truth = -jnp.concat([(dpidx/_pi)[:, None], (dpidy/_pi)[:, None]], axis=1)
+      grad_x = -(x**2 + y**2 - 4) * x
+      grad_y = -(x**2 + y**2 - 4) * y - 2 * (y - 1)
+      truth = jnp.concat([grad_x[:, None], grad_y[:, None]], axis=1)
       truth *= a
     elif subtype == "nongradient":
       if dim != 2:
@@ -349,8 +390,10 @@ def ot_loss_fn(
   """
   loss = _lambda * partial(density_fit_kl_loss_fn, model, dim,
                            T)(params, rng, batch_size)
+  # loss = _lambda * partial(ot_reverse_kl_loss_fn, model, dim,
+  #                          T)(params, rng, batch_size)
   t_batch = jax.random.uniform(rng, (t_batch_size, ))
-  #t_batch = jnp.linspace(0.05, 0.95, t_batch_size)
+  # t_batch = jnp.linspace(0.05, 0.95, t_batch_size)
   for _ in range(t_batch_size):
     loss += partial(kinetic_loss_fn, model, dim, dt
                     )(params, t_batch[_], rng, batch_size // 32) / t_batch_size
@@ -364,13 +407,12 @@ def ot_loss_fn(
 
 def rwpo_loss_fn(
   model, dim: int, T: float, beta: float, dt: float, dx: float,
-  t_batch_size: int, subtype: str, params: hk.Params, rng: PRNGKey,
+  t_batch_size: int, subtype: str, a: float, params: hk.Params, rng: PRNGKey,
   _lambda: float, batch_size: int
 ) -> Array:
   """Loss of the mean-field potential game
   """
 
-  a = 0
   loss = _lambda * partial(reverse_kl_loss_fn, model, dim, T, beta)\
     (params, 0, rng, batch_size) +\
     partial(potential_loss_fn, model, dim, a, subtype)(params, T, rng, batch_size)
@@ -390,13 +432,12 @@ def fp_loss_fn(
   """Loss of the mean-field potential game
   """
 
-  beta = 1  # the initial Gaussian distribution has variance 4
+  beta = 4  # the initial Gaussian distribution has variance 1
   loss = _lambda * partial(reverse_kl_loss_fn, model, dim, T, beta)\
     (params, 0, rng, batch_size)
-  # t_batch_size = 2
   t_batch = jax.random.uniform(rng, (t_batch_size, )) * T
   for t in t_batch:
     loss += partial(flow_matching_loss_fn, model, dim, a, sigma, subtype, dt,
-                    dx)(params, t, rng, batch_size // 64) / t_batch_size
+                    dx)(params, t, rng, batch_size // 32) / t_batch_size * T
 
   return loss

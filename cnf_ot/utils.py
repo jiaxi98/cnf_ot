@@ -316,15 +316,25 @@ def plot_density_and_trajectory(
   # y_min = -6
   # y_max = 3
   # parameter for the visualization of ot with gaussian mixture
-  x_min = -7.5
-  x_max = 7.5
-  y_min = -7.5
-  y_max = 7.5
+  # x_min = -7.5
+  # x_max = 7.5
+  # y_min = -7.5
+  # y_max = 7.5
   # parameter for the visualization of rwpo
   # x_min = -4
   # x_max = 4
   # y_min = -4
   # y_max = 4
+  # parameter for the visualization of rwpo for double-well
+  # x_min = -2
+  # x_max = 2
+  # y_min = -2
+  # y_max = 2
+  # parameter for the visualization of fp for smiling distribution
+  x_min = -3
+  x_max = 3
+  y_min = -3
+  y_max = 3
   x = np.linspace(x_min, x_max, 100)
   y = np.linspace(y_min, y_max, 100)
   X, Y = np.meshgrid(x, y)
@@ -346,7 +356,7 @@ def plot_density_and_trajectory(
     axs[i].axis("off")
     axs[i].set_xlabel("x")
     axs[i].set_xlabel("y")
-    axs[i].set_title("t = {:.1f}".format(t_array[i]), fontsize=5, y=-0.2)
+    axs[i].set_title("t = {:.2f}".format(t_array[i]), fontsize=5, y=-0.2)
 
   fig.tight_layout()
   # plt.subplots_adjust(hspace=0.1)

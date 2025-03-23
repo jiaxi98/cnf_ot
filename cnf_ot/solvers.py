@@ -62,7 +62,7 @@ def main(config_dict: ml_collections.ConfigDict):
     subtype = config.rwpo.pot_type
     loss_fn = partial(
       applications.rwpo_loss_fn, model, dim, T, beta, dt, dx, t_batch_size,
-      subtype
+      subtype, a
     )
     print(
       f"Solving regularized Wasserstein proximal in {dim}D with lambda{_lambda}..."
@@ -366,40 +366,62 @@ def main(config_dict: ml_collections.ConfigDict):
       )
       r_ = r_ + jnp.array([-3, -3]).reshape(1, -1)
       # visualization for Gaussian mixture source distribution for ot
-      r_ = jnp.vstack(
-        [
-          jnp.array([-5.0, 0.0]),
-          jnp.array([5.0, 0.0]),
-          jnp.array([0.0, 5.0]),
-          jnp.array([0.0, -5.0]),
-          jnp.array([3.0, 4.0]),
-          jnp.array([3.0, -4.0]),
-          jnp.array([-3.0, 4.0]),
-          jnp.array([-3.0, -4.0]),
-        ]
-      )
-      t_array = jnp.linspace(T/10, T, 10)
+      # r_ = jnp.vstack(
+      #   [
+      #     jnp.array([-5.0, 0.0]),
+      #     jnp.array([5.0, 0.0]),
+      #     jnp.array([0.0, 5.0]),
+      #     jnp.array([0.0, -5.0]),
+      #     jnp.array([3.0, 4.0]),
+      #     jnp.array([3.0, -4.0]),
+      #     jnp.array([-3.0, 4.0]),
+      #     jnp.array([-3.0, -4.0]),
+      #   ]
+      # )
+      t_array = jnp.linspace(0, T, 5)
     elif _type == "rwpo":
-      # visualization for Gaussian source distribution for rwpo
+      if subtype == "quadratic":
+        # visualization for Gaussian source distribution for rwpo with
+        # quadratic potential
+        r_ = jnp.vstack(
+          [
+            jnp.array([-3.0, -3.0]),
+            jnp.array([-3.0, 3.0]),
+            jnp.array([3.0, -3.0]),
+            jnp.array([3.0, 3.0])
+          ]
+        )
+      if subtype == "double_well":
+        # visualization for Gaussian source distribution for rwpo with
+        # quadratic potential 
+        r_ = jnp.vstack(
+          [
+            jnp.array([-2.0, -2.0]),
+            jnp.array([-2.0, 0.0]),
+            jnp.array([-2.0, 2.0]),
+            jnp.array([0.0, -2.0]),
+            jnp.array([0.0, 2.0]),
+            jnp.array([2.0, -2.0]),
+            jnp.array([2.0, 0.0]),
+            jnp.array([2.0, 2.0])
+          ]
+        )
+      t_array = jnp.linspace(0, T, 5)
+    elif _type == "fp":
+      # this visualization is for the "smiling" density
       r_ = jnp.vstack(
         [
           jnp.array([-3.0, -3.0]),
+          jnp.array([-3.0, 0.0]),
           jnp.array([-3.0, 3.0]),
+          jnp.array([0.0, 3.0]),
+          jnp.array([3.0, 3.0]),
+          jnp.array([3.0, 0.0]),
           jnp.array([3.0, -3.0]),
-          jnp.array([3.0, 3.0])
+          jnp.array([0.0, -3.0]),
         ]
       )
-      t_array = jnp.linspace(0, T, 5)
-    elif _type == "fp":
-      r_ = jnp.vstack(
-        [
-          jnp.array([-1.0, -1.0]),
-          jnp.array([-1.0, 1.0]),
-          jnp.array([1.0, -1.0]),
-          jnp.array([1.0, 1.0])
-        ]
-      )
-      t_array = jnp.linspace(T/10, T, 10)
+      t_array = jnp.array([0, 0.05, 0.1, 0.3, 1.0])
     utils.plot_density_and_trajectory(
       forward_fn,
       inverse_fn,
