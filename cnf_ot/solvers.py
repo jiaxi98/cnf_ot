@@ -319,8 +319,8 @@ def main(config_dict: ml_collections.ConfigDict):
             jnp.exp(-r1/4 * ((X + x0)**2 + (Y - 6/5)**2 - .5)**2 -
                     r2/2 * (Y - y0)**2) + 1e-20
       plt.clf()
-      plt.imshow(_pi)
-      plt.savefig("results/fig/true_density.pdf")
+      # plt.imshow(_pi)
+      # plt.savefig("results/fig/true_density.pdf")
   
     if dim == 3 and subtype == "lorenz":
       r_ = jnp.vstack(
@@ -334,10 +334,13 @@ def main(config_dict: ml_collections.ConfigDict):
           jnp.array([5.0, 5.0, -5.0]),
           jnp.array([5.0, 5.0, 5.0])
         ]
-      )
+      )/5
       # utils.plot_score(log_prob_fn, params, r_)
       # breakpoint()
-
+      x_min = -2
+      x_max = 2
+      y_min = -2
+      y_max = 2
       t_array = jnp.linspace(0, T, 10)
       utils.plot_high_dim_density_and_trajectory(
         forward_fn,
@@ -346,6 +349,7 @@ def main(config_dict: ml_collections.ConfigDict):
         params=params,
         r_=r_,
         t_array=t_array,
+        domain_range=[x_min, x_max, y_min, y_max]
       )
   # breakpoint()
 
@@ -356,28 +360,37 @@ def main(config_dict: ml_collections.ConfigDict):
 
     if _type == "ot":
       # visualization for Gaussian source distribution for ot
-      r_ = jnp.vstack(
-        [
-          jnp.array([-2.0, -0.5]),
-          jnp.array([-2.0, 0.5]),
-          jnp.array([2.0, -0.5]),
-          jnp.array([2.0, 0.5])
-        ]
-      )
-      r_ = r_ + jnp.array([-3, -3]).reshape(1, -1)
-      # visualization for Gaussian mixture source distribution for ot
       # r_ = jnp.vstack(
       #   [
-      #     jnp.array([-5.0, 0.0]),
-      #     jnp.array([5.0, 0.0]),
-      #     jnp.array([0.0, 5.0]),
-      #     jnp.array([0.0, -5.0]),
-      #     jnp.array([3.0, 4.0]),
-      #     jnp.array([3.0, -4.0]),
-      #     jnp.array([-3.0, 4.0]),
-      #     jnp.array([-3.0, -4.0]),
+      #     jnp.array([-2.0, -0.5]),
+      #     jnp.array([-2.0, 0.5]),
+      #     jnp.array([2.0, -0.5]),
+      #     jnp.array([2.0, 0.5])
       #   ]
       # )
+      # r_ = r_ + jnp.array([-3, -3]).reshape(1, -1)
+      # x_min = -6
+      # x_max = 3
+      # y_min = -6
+      # y_max = 3
+
+      # visualization for Gaussian mixture source distribution for ot
+      r_ = jnp.vstack(
+        [
+          jnp.array([-5.0, 0.0]),
+          jnp.array([5.0, 0.0]),
+          jnp.array([0.0, 5.0]),
+          jnp.array([0.0, -5.0]),
+          jnp.array([3.0, 4.0]),
+          jnp.array([3.0, -4.0]),
+          jnp.array([-3.0, 4.0]),
+          jnp.array([-3.0, -4.0]),
+        ]
+      )
+      x_min = -7.5
+      x_max = 7.5
+      y_min = -7.5
+      y_max = 7.5
       t_array = jnp.linspace(0, T, 5)
     elif _type == "rwpo":
       if subtype == "quadratic":
@@ -385,12 +398,16 @@ def main(config_dict: ml_collections.ConfigDict):
         # quadratic potential
         r_ = jnp.vstack(
           [
-            jnp.array([-3.0, -3.0]),
-            jnp.array([-3.0, 3.0]),
-            jnp.array([3.0, -3.0]),
-            jnp.array([3.0, 3.0])
+            jnp.array([-2.0, -2.0]),
+            jnp.array([-2.0, 2.0]),
+            jnp.array([2.0, -2.0]),
+            jnp.array([2.0, 2.0])
           ]
         )
+        x_min = -4
+        x_max = 4
+        y_min = -4
+        y_max = 4
       if subtype == "double_well":
         # visualization for Gaussian source distribution for rwpo with
         # quadratic potential 
@@ -406,9 +423,26 @@ def main(config_dict: ml_collections.ConfigDict):
             jnp.array([2.0, 2.0])
           ]
         )
+        x_min = -2
+        x_max = 2
+        y_min = -2
+        y_max = 2
       t_array = jnp.linspace(0, T, 5)
     elif _type == "fp":
-      # this visualization is for the "smiling" density
+      # this visualization is for the single "smiling" density
+      # r_ = jnp.vstack(
+      #   [
+      #     jnp.array([-3.0, -3.0]),
+      #     jnp.array([-3.0, 0.0]),
+      #     jnp.array([-3.0, 3.0]),
+      #     jnp.array([0.0, 3.0]),
+      #     jnp.array([3.0, 3.0]),
+      #     jnp.array([3.0, 0.0]),
+      #     jnp.array([3.0, -3.0]),
+      #     jnp.array([0.0, -3.0]),
+      #   ]
+      # )
+      # this visualization is for the double "smiling" density
       r_ = jnp.vstack(
         [
           jnp.array([-3.0, -3.0]),
@@ -421,6 +455,10 @@ def main(config_dict: ml_collections.ConfigDict):
           jnp.array([0.0, -3.0]),
         ]
       )
+      x_min = -3
+      x_max = 3
+      y_min = -3
+      y_max = 3
       t_array = jnp.array([0, 0.05, 0.1, 0.3, 1.0])
     utils.plot_density_and_trajectory(
       forward_fn,
@@ -429,6 +467,7 @@ def main(config_dict: ml_collections.ConfigDict):
       params=params,
       r_=r_,
       t_array=t_array,
+      domain_range=[x_min, x_max, y_min, y_max]
     )
 
 

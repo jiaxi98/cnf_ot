@@ -303,6 +303,7 @@ def plot_density_and_trajectory(
   params: hk.Params,
   r_: jnp.array,
   t_array: jnp.array,
+  domain_range: list,
 ):
 
   plt.clf()
@@ -310,31 +311,8 @@ def plot_density_and_trajectory(
     t_array.shape[0]//5, 5, figsize=(5, t_array.shape[0]//5)
   )
   axs = axs.flatten()
-  # parameter for the visualization of ot with gaussian
-  # x_min = -6
-  # x_max = 3
-  # y_min = -6
-  # y_max = 3
-  # parameter for the visualization of ot with gaussian mixture
-  # x_min = -7.5
-  # x_max = 7.5
-  # y_min = -7.5
-  # y_max = 7.5
-  # parameter for the visualization of rwpo
-  # x_min = -4
-  # x_max = 4
-  # y_min = -4
-  # y_max = 4
-  # parameter for the visualization of rwpo for double-well
-  # x_min = -2
-  # x_max = 2
-  # y_min = -2
-  # y_max = 2
-  # parameter for the visualization of fp for smiling distribution
-  x_min = -3
-  x_max = 3
-  y_min = -3
-  y_max = 3
+  x_min, x_max, y_min, y_max = domain_range[0], domain_range[1],\
+    domain_range[2], domain_range[3]
   x = np.linspace(x_min, x_max, 100)
   y = np.linspace(y_min, y_max, 100)
   X, Y = np.meshgrid(x, y)
@@ -342,6 +320,7 @@ def plot_density_and_trajectory(
   xi = inverse_fn(params, r_, jnp.zeros(1))
 
   for i in range(len(t_array)):
+    index = 20
     fake_cond_ = t_array[i] * jnp.ones((1, ))
     log_prob = log_prob_fn(params, XY, cond=fake_cond_)
     axs[i].imshow(jnp.exp(log_prob.reshape(100, 100)), cmap="Greens")
@@ -351,8 +330,9 @@ def plot_density_and_trajectory(
         (r_[:, 0] - x_min) / (x_max - x_min) * 100,
         (r_[:, 1] - y_min) / (y_max - y_min) * 100,
         c="red",
-        s=.5
+        s=.1 * index
       )
+      index -= 4
     axs[i].axis("off")
     axs[i].set_xlabel("x")
     axs[i].set_xlabel("y")
@@ -370,15 +350,16 @@ def plot_high_dim_density_and_trajectory(
   params: hk.Params,
   r_: jnp.array,
   t_array: jnp.array,
+  domain_range: list,
 ):
 
   plt.clf()
   fig, axs = plt.subplots(2, 5, figsize=(5, 2))
   axs = axs.flatten()
-  x_min = -10
-  x_max = 10
+  x_min, x_max, y_min, y_max = domain_range[0], domain_range[1],\
+    domain_range[2], domain_range[3]
   x = np.linspace(x_min, x_max, 100)
-  y = np.linspace(x_min, x_max, 100)
+  y = np.linspace(y_min, y_max, 100)
   X, Y = np.meshgrid(x, y)
   XY = jnp.hstack(
     [X.reshape(100**2, 1), Y.reshape(100**2, 1), jnp.zeros((100**2, 1))]
@@ -386,18 +367,19 @@ def plot_high_dim_density_and_trajectory(
   xi = inverse_fn(params, r_, jnp.zeros(1))
 
   for i in range(10):
+    index = 20
     fake_cond_ = jnp.ones((1, )) * i * .1
     log_prob = log_prob_fn(params, XY, cond=fake_cond_)
     axs[i].imshow(jnp.exp(log_prob.reshape(100, 100)), cmap=cm.viridis)
     for t in t_array:
       r_ = forward_fn(params, xi, jnp.ones(1) * t)
       axs[i].scatter(
-        (r_[:, 0] + x_max) / 2 / x_max * 100,
-        (r_[:, 2] + x_max) / 2 / x_max * 100,
+        (r_[:, 0] - x_min) / (x_max - x_min) * 100,
+        (r_[:, 1] - y_min) / (y_max - y_min) * 100,
         c="red",
-        marker='.',
-        s=.1
+        s=.1 * index
       )
+      index -= 4.75
     axs[i].axis("off")
 
   fig.tight_layout(pad=0.2)
