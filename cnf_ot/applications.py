@@ -25,11 +25,11 @@ def kl_loss_fn(
     sample_shape: int,
   ):
 
-    # gaussian source distribution
-    A = jnp.array([[5, 1], [1, 0.5]])
-    B = jnp.linalg.cholesky(A)
-    return jax.random.normal(seed, shape=(sample_shape, dim)) @ B +\
-      jnp.ones(dim).reshape(1, dim) * -3
+    # # gaussian source distribution
+    # A = jnp.array([[5, 1], [1, 0.5]])
+    # B = jnp.linalg.cholesky(A)
+    # return jax.random.normal(seed, shape=(sample_shape, dim)) @ B +\
+    #   jnp.ones(dim).reshape(1, dim) * -3
 
     # gaussian mixture source distribution
     R = 5
@@ -67,7 +67,7 @@ def kl_loss_fn(
     )
 
     sample = sample_[component_indices[jnp.arange(sample_shape)],
-                    jnp.arange(sample_shape)]
+                     jnp.arange(sample_shape)]
     return sample
 
   def sample_target_fn(
@@ -75,8 +75,8 @@ def kl_loss_fn(
     sample_shape: int,
   ):
 
-    return jax.random.normal(seed, shape=(sample_shape, dim)) # +\
-      # jnp.ones(dim).reshape(1, dim) * 3
+    return jax.random.normal(seed, shape=(sample_shape, dim))  # +\
+    # jnp.ones(dim).reshape(1, dim) * 3
 
   samples1 = sample_source_fn(seed=rng, sample_shape=batch_size)
   samples2 = sample_target_fn(seed=rng, sample_shape=batch_size)
@@ -89,10 +89,9 @@ def kl_loss_fn(
 # This function is used for debug. Try to see if the loss function of the
 # simple ot problem is decreasing over optimization.
 def ot_reverse_kl_loss_fn(
-  model, dim: int, T: float, params: hk.Params, rng: PRNGKey,
-  batch_size: int
+  model, dim: int, T: float, params: hk.Params, rng: PRNGKey, batch_size: int
 ) -> Array:
-  
+
   target_prob1 = jax.vmap(
     partial(
       jax.scipy.stats.multivariate_normal.pdf,
@@ -125,7 +124,7 @@ def ot_reverse_kl_loss_fn(
   )
   loss += (log_prob - jnp.log(target_prob2(samples))).mean()
   return loss
-  
+
 
 def reverse_kl_loss_fn(
   model, dim: int, T: float, beta: float, params: hk.Params, cond: float,
@@ -281,100 +280,98 @@ def flow_matching_loss_fn(
   model, dim: int, a: float, sigma: float, subtype: str, dt: float, dx: float,
   params: hk.Params, cond: float, rng: PRNGKey, batch_size: int
 ) -> Array:
-    """Kinetic energy along the trajectory at time t, notice that this contains
+  """Kinetic energy along the trajectory at time t, notice that this contains
     not only the velocity but also the score function
     """
-    dt = 0.01
-    fake_cond_ = jnp.ones((batch_size, 1)) * (cond - dt / 2)
-    r1 = model.apply.sample(
-      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
-    )
-    fake_cond_ = jnp.ones((batch_size, 1)) * (cond + dt / 2)
-    r2 = model.apply.sample(
-      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
-    )
-    fake_cond_ = jnp.ones((batch_size, 1)) * cond
-    r3 = model.apply.sample(
-      params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
-    )
-    velocity = (r2 - r1) / dt
-    score = jnp.zeros((batch_size, dim))
-    dx = 0.01
-    for i in range(dim):
-      dr = jnp.zeros((1, dim))
-      dr = dr.at[0, i].set(dx / 2)
-      log_p1 = model.apply.log_prob(params, r3 + dr, cond=jnp.ones(1) * cond)
-      log_p2 = model.apply.log_prob(params, r3 - dr, cond=jnp.ones(1) * cond)
-      score = score.at[:, i].set((log_p1 - log_p2) / dx)
-    velocity += score * sigma
-    if subtype == "gradient":
-      truth = -r3 * a
-      x = r3[:, 0]
-      y = r3[:, 1]
-      # r1 = 4
-      # r2 = 2
-      # _pi = jnp.exp(-r1/4 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
-      #                r2/2 * (y - 2)**2) +\
-      #       jnp.exp(-r1/4 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
-      #                r2/2 * (y - 2)**2) +\
-      #       jnp.exp(-r1/4 * (x**2 + y**2 - 2)**2 - r2/2 * (y + 1)**2) + .01
-      # dpidx = jnp.exp(-r1/4 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
-      #                r2/2 * (y - 2)**2) * ((x - 6/5)**2 + (y - 6/5)**2 - .5) *\
-      #                r1 * (x - 6/5) +\
-      #         jnp.exp(-r1/4 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
-      #                 r2/2 * (y - 2)**2) * ((x + 6/5)**2 + (y - 6/5)**2 - .5) *\
-      #                k1 * (x + 6/5) +\
-      #         jnp.exp(-r1/4 * (x**2 + y**2 - 2)**2 - r2/2 * (y + 1)**2) *\
-      #                 (x**2 + y**2 - 2) * r1 * x
-      # dpidy = jnp.exp(-r1/4 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
-      #                r2/2 * (y - 2)**2) * (((x - 6/5)**2 + (y - 6/5)**2 - .5) *
-      #                r1 * (y - 6/5) + r2 * (y - 2)) +\
-      #         jnp.exp(-r1/4 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
-      #                 r2/2 * (y - 2)**2) * (((x + 6/5)**2 + (y - 6/5)**2 - .5) *
-      #                r1 * (y - 6/5) + r2 * (y - 2)) +\
-      #         jnp.exp(-r1/4 * (x**2 + y**2 - 2)**2 - r2/2 * (y + 1)**2) *\
-      #                 ((x**2 + y**2 - 2) * r1 * y + r2 * (y + 1))
-      # truth = -jnp.concat([(dpidx/_pi)[:, None], (dpidy/_pi)[:, None]], axis=1)
-      # y0 = 8/5
-      # x0 = 3/2
-      # _pi = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
-      #               r2/2 * (y - y0)**2) + 1e-20# +\
-      #       # jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
-      #       #         r2/2 * (y - y0)**2) + 1e-20
-      # dpidx = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
-      #               r2/2 * (y - y0)**2) * ((x - x0)**2 + (y - 6/5)**2 - .5) *\
-      #               r1 * (x - x0) # +\
-      #         # jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
-      #         #         r2/2 * (y - y0)**2) * ((x + x0)**2 + (y - 6/5)**2 - .5) *\
-      #         #       r1 * (x + x0)
-      # dpidy = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
-      #               r2/2 * (y - y0)**2) * (((x - x0)**2 + (y - 6/5)**2 - .5) *
-      #               r1 * (y - 6/5) + r2 * (y - y0)) # +\
-      #         # jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
-      #         #         r2/2 * (y - y0)**2) * (((x + x0)**2 + (y - 6/5)**2 - .5) *
-      #         #       r1 * (y - 6/5) + r2 * (y - y0))
-      # truth = -jnp.concat([(dpidx/_pi)[:, None], (dpidy/_pi)[:, None]], axis=1)
-      grad_x = -(x**2 + y**2 - 4) * x
-      grad_y = -(x**2 + y**2 - 4) * y - 2 * (y - 1)
-      truth = jnp.concat([grad_x[:, None], grad_y[:, None]], axis=1)
-      truth *= a
-    elif subtype == "nongradient":
-      if dim != 2:
-        raise Exception("nongradient case is only implemented for 2D!")
-      J = jnp.array([[0, 1], [-1, 0]])
-      delta = 0.5
-      truth = -r3 * a + jnp.dot(r3, J) * delta
-    elif subtype == "lorenz":
-      if dim != 3:
-        raise Exception("Lorenz dynamics is only defined for 3 dim!")
-      truth = jnp.zeros((batch_size, dim))
-      # _r is a parameter to change the scale of the dynamics
-      _r = 4
-      truth = truth.at[:, 0].set(10 * (r3[:, 1] - r3[:, 0]))
-      truth = truth.at[:, 1].set(_r * r3[:, 0] * (28/_r - r3[:, 2]) - r3[:, 1])
-      truth = truth.at[:, 2].set(_r * r3[:, 0] * r3[:, 1] - r3[:, 2] * 8/3)
-      
-    return jnp.mean((velocity - truth)**2) * dim / 2
+  dt = 0.01
+  fake_cond_ = jnp.ones((batch_size, 1)) * (cond - dt / 2)
+  r1 = model.apply.sample(
+    params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+  )
+  fake_cond_ = jnp.ones((batch_size, 1)) * (cond + dt / 2)
+  r2 = model.apply.sample(
+    params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+  )
+  fake_cond_ = jnp.ones((batch_size, 1)) * cond
+  r3 = model.apply.sample(
+    params, seed=rng, sample_shape=(batch_size, ), cond=fake_cond_
+  )
+  velocity = (r2 - r1) / dt
+  score = jnp.zeros((batch_size, dim))
+  dx = 0.01
+  for i in range(dim):
+    dr = jnp.zeros((1, dim))
+    dr = dr.at[0, i].set(dx / 2)
+    log_p1 = model.apply.log_prob(params, r3 + dr, cond=jnp.ones(1) * cond)
+    log_p2 = model.apply.log_prob(params, r3 - dr, cond=jnp.ones(1) * cond)
+    score = score.at[:, i].set((log_p1 - log_p2) / dx)
+  velocity += score * sigma
+  if subtype == "gradient":
+    truth = -r3 * a
+    x = r3[:, 0]
+    y = r3[:, 1]
+    # r1 = 4
+    # r2 = 2
+    # _pi = jnp.exp(-r1/4 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+    #                r2/2 * (y - 2)**2) +\
+    #       jnp.exp(-r1/4 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+    #                r2/2 * (y - 2)**2) +\
+    #       jnp.exp(-r1/4 * (x**2 + y**2 - 2)**2 - r2/2 * (y + 1)**2) + .01
+    # dpidx = jnp.exp(-r1/4 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+    #                r2/2 * (y - 2)**2) * ((x - 6/5)**2 + (y - 6/5)**2 - .5) *\
+    #                r1 * (x - 6/5) +\
+    #         jnp.exp(-r1/4 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+    #                 r2/2 * (y - 2)**2) * ((x + 6/5)**2 + (y - 6/5)**2 - .5) *\
+    #                k1 * (x + 6/5) +\
+    #         jnp.exp(-r1/4 * (x**2 + y**2 - 2)**2 - r2/2 * (y + 1)**2) *\
+    #                 (x**2 + y**2 - 2) * r1 * x
+    # dpidy = jnp.exp(-r1/4 * ((x - 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+    #                r2/2 * (y - 2)**2) * (((x - 6/5)**2 + (y - 6/5)**2 - .5) *
+    #                r1 * (y - 6/5) + r2 * (y - 2)) +\
+    #         jnp.exp(-r1/4 * ((x + 6/5)**2 + (y - 6/5)**2 - .5)**2 -
+    #                 r2/2 * (y - 2)**2) * (((x + 6/5)**2 + (y - 6/5)**2 - .5) *
+    #                r1 * (y - 6/5) + r2 * (y - 2)) +\
+    #         jnp.exp(-r1/4 * (x**2 + y**2 - 2)**2 - r2/2 * (y + 1)**2) *\
+    #                 ((x**2 + y**2 - 2) * r1 * y + r2 * (y + 1))
+    # truth = -jnp.concat([(dpidx/_pi)[:, None], (dpidy/_pi)[:, None]], axis=1)
+
+    # x0 = 2
+    # y0 = 0.5
+    # k1 = 0.5
+    # _pi = jnp.exp(-((x - x0)**2 + y**2 - 1)**2 / 4 * k1 - (y - y0)**2) +\
+    #   jnp.exp(-((x + x0)**2 + y**2 - 1)**2 / 4 * k1 - (y - y0)**2) + 1e-20
+    # dpidx = jnp.exp(-((x - x0)**2 + y**2 - 1)**2 / 4 * k1 - (y - y0)**2) *\
+    #   ((x - x0)**2 + y**2 - 1) * (x - x0) * k1 +\
+    #   jnp.exp(-((x + x0)**2 + y**2 - 1)**2 / 4 * k1 - (y - y0)**2) *\
+    #   (((x + x0)**2 + y**2 - 1) * (x + x0)) * k1
+    # dpidy = jnp.exp(-((x - x0)**2 + y**2 - 1)**2 / 4 * k1 - (y - y0)**2) *\
+    #   (((x - x0)**2 + y**2 - 1) * y * k1 + 2 * (y - y0)) +\
+    #   jnp.exp(-((x + x0)**2 + y**2 - 1)**2 / 4 * k1 - (y - y0)**2) *\
+    #   (((x + x0)**2 + y**2 - 1) * y * k1 + 2 * (y - y0))
+    # truth = -jnp.concat([(dpidx/_pi)[:, None], (dpidy/_pi)[:, None]], axis=1)
+
+    # single smiling distribution
+    grad_x = -(x**2 + y**2 - 4) * x
+    grad_y = -(x**2 + y**2 - 4) * y - 2 * (y - 1)
+    truth = jnp.concat([grad_x[:, None], grad_y[:, None]], axis=1)
+    truth *= a
+  elif subtype == "nongradient":
+    if dim != 2:
+      raise Exception("nongradient case is only implemented for 2D!")
+    J = jnp.array([[0, 1], [-1, 0]])
+    delta = 0.5
+    truth = -r3 * a + jnp.dot(r3, J) * delta
+  elif subtype == "lorenz":
+    if dim != 3:
+      raise Exception("Lorenz dynamics is only defined for 3 dim!")
+    truth = jnp.zeros((batch_size, dim))
+    # _r is a parameter to change the scale of the dynamics
+    _r = 9
+    truth = truth.at[:, 0].set(10 * (r3[:, 1] - r3[:, 0]))
+    truth = truth.at[:, 1].set(_r * r3[:, 0] * (28 / _r - r3[:, 2]) - r3[:, 1])
+    truth = truth.at[:, 2].set(_r * r3[:, 0] * r3[:, 1] - r3[:, 2] * 8 / 3)
+
+  return jnp.mean((velocity - truth)**2) * dim / 2
 
 
 def ot_loss_fn(
@@ -437,7 +434,8 @@ def fp_loss_fn(
     (params, 0, rng, batch_size)
   t_batch = jax.random.uniform(rng, (t_batch_size, )) * T
   for t in t_batch:
-    loss += partial(flow_matching_loss_fn, model, dim, a, sigma, subtype, dt,
-                    dx)(params, t, rng, batch_size // 32) / t_batch_size * T
+    loss += partial(
+      flow_matching_loss_fn, model, dim, a, sigma, subtype, dt, dx
+    )(params, t, rng, batch_size // 32) / t_batch_size * T
 
   return loss

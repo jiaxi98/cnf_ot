@@ -119,7 +119,7 @@ def main(config_dict: ml_collections.ConfigDict):
       #   pot = potential_loss_fn(params, T, eval_rng, batch_size)
       #   kin = loss - rKL * _lambda - pot
       #   desc_str += f"{KL=:.4f} | {pot=:.2f} | {kin=:.2f}"
-      
+
       # elif _type == "fp":
       #   rKL_loss = _lambda * partial(reverse_kl_loss_fn, model, dim, T, beta)\
       #     (params, 0, rng, batch_size)
@@ -194,15 +194,18 @@ def main(config_dict: ml_collections.ConfigDict):
         y = jax.random.normal(_rng, shape=(x_batch, y_batch, 2)) *\
           jnp.sqrt(2 / beta * T) + x.reshape(-1, 1, 2)
         if subtype == "quadratic":
+
           def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
             return jnp.sum(r**2, axis=1) / 2
         elif subtype == "double_well":
+
           def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
             return (
               jnp.linalg.norm(r - a * jnp.ones(dim).reshape(1, -1), axis=1) *
               jnp.linalg.norm(r + a * jnp.ones(dim).reshape(1, -1), axis=1) / 2
             )**2
         elif subtype == "obstacle":
+
           def potential_fn(r: jnp.ndarray, ) -> jnp.ndarray:
             return 50 * jnp.exp(-jnp.sum(r**2, axis=1) / 2)
         return -2 / beta * jnp.log(
@@ -242,10 +245,10 @@ def main(config_dict: ml_collections.ConfigDict):
       partial(
         jax.scipy.stats.multivariate_normal.pdf,
         mean=jnp.zeros(dim),
-        cov=jnp.eye(dim) *
-        (jnp.exp(-2 * a * T) * (4 - 1 / 2 / a) + 1 / 2 / a),
+        cov=jnp.eye(dim) * (jnp.exp(-2 * a * T) * (4 - 1 / 2 / a) + 1 / 2 / a),
       )
     )
+
     def rmse_mc_loss_fn(
       params: hk.Params, cond: float, rng: PRNGKey, batch_size: int
     ) -> Array:
@@ -295,7 +298,7 @@ def main(config_dict: ml_collections.ConfigDict):
             )**2
           ).mean()
         )
-      
+
       print(
         "L2 error on grid: {:.3e}".format(rmse_grid_loss_fn(params, 1, 500))
       )
@@ -312,8 +315,8 @@ def main(config_dict: ml_collections.ConfigDict):
       x = jnp.linspace(x_min, x_max, nx)
       y = jnp.linspace(y_min, y_max, nx)
       X, Y = jnp.meshgrid(x, y)
-      y0 = 8/5
-      x0 = 3/2
+      y0 = 8 / 5
+      x0 = 3 / 2
       _pi = jnp.exp(-r1/4 * ((X - x0)**2 + (Y - 6/5)**2 - .5)**2 -
                     r2/2 * (Y - y0)**2) +\
             jnp.exp(-r1/4 * ((X + x0)**2 + (Y - 6/5)**2 - .5)**2 -
@@ -321,7 +324,7 @@ def main(config_dict: ml_collections.ConfigDict):
       plt.clf()
       # plt.imshow(_pi)
       # plt.savefig("results/fig/true_density.pdf")
-  
+
     if dim == 3 and subtype == "lorenz":
       r_ = jnp.vstack(
         [
@@ -427,7 +430,7 @@ def main(config_dict: ml_collections.ConfigDict):
         y_max = 4
       if subtype == "double_well":
         # visualization for Gaussian source distribution for rwpo with
-        # quadratic potential 
+        # quadratic potential
         r_ = jnp.vstack(
           [
             jnp.array([-2.0, -2.0]),

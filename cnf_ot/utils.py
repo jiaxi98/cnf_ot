@@ -146,8 +146,8 @@ def plot_velocity_field(
     r_ = jnp.hstack([X.reshape(nx**2, 1), Y.reshape(nx**2, 1)])
     x = r_[:, 0]
     y = r_[:, 1]
-    y0 = 8/5
-    x0 = 3/2
+    y0 = 8 / 5
+    x0 = 3 / 2
     _pi = jnp.exp(-r1/4 * ((x - x0)**2 + (y - 6/5)**2 - .5)**2 -
                   r2/2 * (y - y0)**2) +\
           jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
@@ -164,7 +164,9 @@ def plot_velocity_field(
             jnp.exp(-r1/4 * ((x + x0)**2 + (y - 6/5)**2 - .5)**2 -
                     r2/2 * (y - y0)**2) * (((x + x0)**2 + (y - 6/5)**2 - .5) *
                   r1 * (y - 6/5) + r2 * (y - y0))
-    field = -jnp.concat([(dpidx/_pi)[:, None], (dpidy/_pi)[:, None]], axis=1)
+    field = -jnp.concat(
+      [(dpidx / _pi)[:, None], (dpidy / _pi)[:, None]], axis=1
+    )
     # grad_x = -(x**2 + y**2 - 4) * r1 * x
     # grad_y = -(x**2 + y**2 - 4) * r1 * y - r2 * (y + 1)
     # field = jnp.concat([grad_x[:, None], grad_y[:, None]], axis=1)
@@ -308,7 +310,7 @@ def plot_density_and_trajectory(
 
   plt.clf()
   fig, axs = plt.subplots(
-    t_array.shape[0]//5, 5, figsize=(5, t_array.shape[0]//5)
+    t_array.shape[0] // 5, 5, figsize=(5, t_array.shape[0] // 5)
   )
   axs = axs.flatten()
   x_min, x_max, y_min, y_max = domain_range[0], domain_range[1],\
@@ -355,7 +357,7 @@ def plot_high_dim_density_and_trajectory(
 
   plt.clf()
   fig, axs = plt.subplots(
-    t_array.shape[0]//5, 5, figsize=(5, t_array.shape[0]//5)
+    t_array.shape[0] // 5, 5, figsize=(5, t_array.shape[0] // 5)
   )
   axs = axs.flatten()
   x_min, x_max, y_min, y_max = domain_range[0], domain_range[1],\
@@ -364,7 +366,9 @@ def plot_high_dim_density_and_trajectory(
   y = np.linspace(y_min, y_max, 100)
   X, Y = np.meshgrid(x, y)
   XY = jnp.hstack(
-    [X.reshape(100**2, 1), Y.reshape(100**2, 1), jnp.ones((100**2, 1)) * 3]
+    [X.reshape(100**2, 1),
+     Y.reshape(100**2, 1),
+     jnp.ones((100**2, 1)) * 3]
   )
   xi = inverse_fn(params, r_, jnp.zeros(1))
 
@@ -372,7 +376,9 @@ def plot_high_dim_density_and_trajectory(
     index = 20
     fake_cond_ = t_array[i] * jnp.ones((1, ))
     log_prob = log_prob_fn(params, XY, cond=fake_cond_)
-    axs[i].imshow(jnp.exp((log_prob.reshape(100, 100)).T)[:,::-1], cmap="Greens")
+    axs[i].imshow(
+      jnp.exp((log_prob.reshape(100, 100)).T)[:, ::-1], cmap="Greens"
+    )
     for t in t_array:
       r_ = forward_fn(params, xi, jnp.ones(1) * t)
       axs[i].scatter(
@@ -396,10 +402,10 @@ def plot_proj_density(
   domain_range: list,
   direction: str = 'z',
 ):
-  
+
   plt.clf()
   fig, axs = plt.subplots(
-    t_array.shape[0]//5, 5, figsize=(5, t_array.shape[0]//5)
+    t_array.shape[0] // 5, 5, figsize=(5, t_array.shape[0] // 5)
   )
   axs = axs.flatten()
   x_min, x_max, y_min, y_max = domain_range[0], domain_range[1],\
@@ -415,23 +421,35 @@ def plot_proj_density(
     for i in range(len(section)):
       if direction == 'x':
         XYZ = jnp.hstack(
-          [jnp.ones((N**2, 1)) * section[i], X.reshape(N**2, 1), Y.reshape(N**2, 1)]
+          [
+            jnp.ones((N**2, 1)) * section[i],
+            X.reshape(N**2, 1),
+            Y.reshape(N**2, 1)
+          ]
         )
       elif direction == 'y':
         XYZ = jnp.hstack(
-          [X.reshape(N**2, 1), jnp.ones((N**2, 1)) * section[i], Y.reshape(N**2, 1)]
+          [
+            X.reshape(N**2, 1),
+            jnp.ones((N**2, 1)) * section[i],
+            Y.reshape(N**2, 1)
+          ]
         )
       elif direction == 'z':
         XYZ = jnp.hstack(
-          [X.reshape(N**2, 1), Y.reshape(N**2, 1), jnp.ones((N**2, 1)) * section[i]]
+          [
+            X.reshape(N**2, 1),
+            Y.reshape(N**2, 1),
+            jnp.ones((N**2, 1)) * section[i]
+          ]
         )
       fake_cond_ = t_array[j] * jnp.ones((1, ))
       prob += np.exp(log_prob_fn(params, XYZ, cond=fake_cond_)).reshape(N, N)
     prob /= len(section)
-    axs[j].imshow((prob.T)[:,::-1], cmap="Greens")
+    axs[j].imshow((prob.T)[:, ::-1], cmap="Greens")
     axs[j].axis("off")
     axs[j].set_title("t = {:.2f}".format(t_array[j]), fontsize=5, y=-0.2)
-  
+
   fig.tight_layout()
   plt.savefig(f"results/fig/proj_density_{direction}.pdf")
 
