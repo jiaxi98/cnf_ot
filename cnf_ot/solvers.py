@@ -325,16 +325,12 @@ def main(config_dict: ml_collections.ConfigDict):
     if dim == 3 and subtype == "lorenz":
       r_ = jnp.vstack(
         [
-          jnp.array([-5.0, -5.0, -5.0]),
-          jnp.array([-5.0, -5.0, 5.0]),
-          jnp.array([-5.0, 5.0, -5.0]),
-          jnp.array([-5.0, 5.0, 5.0]),
-          jnp.array([5.0, -5.0, -5.0]),
-          jnp.array([5.0, -5.0, 5.0]),
-          jnp.array([5.0, 5.0, -5.0]),
-          jnp.array([5.0, 5.0, 5.0])
+          jnp.array([-1.0, -1.0, 3.0]),
+          jnp.array([-1.0, 1.0, 3.0]),
+          jnp.array([1.0, -1.0, 3.0]),
+          jnp.array([1.0, 1.0, 3.0]),
         ]
-      )/5
+      )
       # utils.plot_score(log_prob_fn, params, r_)
       # breakpoint()
       x_min = -2
@@ -351,7 +347,28 @@ def main(config_dict: ml_collections.ConfigDict):
         t_array=t_array,
         domain_range=[x_min, x_max, y_min, y_max]
       )
-  # breakpoint()
+
+      utils.plot_proj_density(
+        log_prob_fn,
+        params,
+        t_array,
+        domain_range=[x_min, x_max, y_min, y_max],
+        direction='x',
+      )
+      utils.plot_proj_density(
+        log_prob_fn,
+        params,
+        t_array,
+        domain_range=[x_min, x_max, y_min, y_max],
+        direction='y',
+      )
+      utils.plot_proj_density(
+        log_prob_fn,
+        params,
+        t_array,
+        domain_range=[x_min, x_max, y_min, y_max],
+        direction='z',
+      )
 
   if dim == 2:
     # this plot the distribution at t=0,1 after training
