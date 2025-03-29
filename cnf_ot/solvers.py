@@ -493,6 +493,6 @@ def main(config_dict: ml_collections.ConfigDict):
 
 if __name__ == "__main__":
 
-  with open("config/main.yaml", "r") as file:
+  with open("config/mfc.yaml", "r") as file:
     config_dict = yaml.safe_load(file)
   main(config_dict)

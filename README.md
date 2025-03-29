@@ -1,6 +1,7 @@
 # cnf_ot
 <!-- TODO: change the repo name, maybe cnf_mfc? -->
-Code base for "Variational conditional normalizing flows for computing second-order mean field control problems"
+Code base for [Variational conditional normalizing flows for computing second-order mean field control problems](https://arxiv.org/abs/2503.19580)
+
 
 ## Quick start
 1. Run the following script to prepare the environment
@@ -12,7 +13,7 @@ cd cnf_ot
 pip install .
 pip install -r requirements.txt
 ```
-2. Modify config/main.yaml for different settings (see following instructions
+2. Modify config/mfc.yaml for different settings (see following instructions
 ) and solve the problem via:
 ```python
 python cnf_ot/solvers.py
