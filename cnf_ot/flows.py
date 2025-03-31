@@ -181,6 +181,7 @@ def RQSFlow(
   hidden_sizes: Sequence[int],
   num_bins: int,
   periodized: bool = False,
+  cond_shape=(1, ),
   base_range=(0, 2 * np.pi),
 ):
 
@@ -192,6 +193,7 @@ def RQSFlow(
       num_bins=num_bins,
       periodized=periodized,
       init_flow_to_identity=True,
+      cond_shape=cond_shape,
       base_range=base_range,
       minimum_perm=True,
     )
