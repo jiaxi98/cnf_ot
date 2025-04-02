@@ -11,7 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Extend distrax to support conditional normalizing flow"""
+"""
+Extend distrax to support conditional normalizing flow
+
+NOTE: The only difference between this file and the one in current source code
+is that one set the cond argument to have default value of None, which
+is used for unconditional normalizing flows.
+"""
 import abc
 import functools
 import operator
@@ -65,35 +71,31 @@ class ConditionalBijector(base.Bijector):
       is_constant_log_det=is_constant_log_det,
     )
 
-  def forward(self, x: Array, c: Array = None) -> Array:
+  def forward(self, x: Array, c: Array) -> Array:
     """Computes y = f(x,c)."""
     y, _ = self.forward_and_log_det(x, c)
     return y
 
-  def inverse(self, y: Array, c: Array = None) -> Array:
+  def inverse(self, y: Array, c: Array) -> Array:
     """Computes x = f^{-1}(y)."""
     x, _ = self.inverse_and_log_det(y, c)
     return x
 
-  def forward_log_det_jacobian(self, x: Array, c: Array = None) -> Array:
+  def forward_log_det_jacobian(self, x: Array, c: Array) -> Array:
     """Computes log|det J(f)(x, c)|."""
     _, logdet = self.forward_and_log_det(x, c)
     return logdet
 
-  def inverse_log_det_jacobian(self, y: Array, c: Array = None) -> Array:
+  def inverse_log_det_jacobian(self, y: Array, c: Array) -> Array:
     """Computes log|det J(f^{-1})(y, c)|."""
     _, logdet = self.inverse_and_log_det(y, c)
     return logdet
 
   @abc.abstractmethod
-  def forward_and_log_det(self,
-                          x: Array,
-                          c: Array = None) -> Tuple[Array, Array]:
+  def forward_and_log_det(self, x: Array, c: Array) -> Tuple[Array, Array]:
     """Computes y = f(x,c) and log|det J(f)(x,c)|."""
 
-  def inverse_and_log_det(self,
-                          y: Array,
-                          c: Array = None) -> Tuple[Array, Array]:
+  def inverse_and_log_det(self, y: Array, c: Array) -> Tuple[Array, Array]:
     """Computes x = f^{-1}(y,c) and log|det J(f^{-1})(y,c)|."""
     raise NotImplementedError(
       f"Bijector {self.name} does not implement `inverse_and_log_det`."
@@ -144,21 +146,19 @@ class ConditionalChain(ConditionalBijector):
     """The list of bijectors in the chain."""
     return self._bijectors
 
-  def forward(self, x: Array, c: Array = None) -> Array:
+  def forward(self, x: Array, c: Array) -> Array:
     """Computes y = f(x,c)."""
     for bijector in reversed(self._bijectors):
       x = bijector.forward(x, c)
     return x
 
-  def inverse(self, y: Array, c: Array = None) -> Array:
+  def inverse(self, y: Array, c: Array) -> Array:
     """Computes x = f^{-1}(y,c)."""
     for bijector in self._bijectors:
       y = bijector.inverse(y, c)
     return y
 
-  def forward_and_log_det(self,
-                          x: Array,
-                          c: Array = None) -> Tuple[Array, Array]:
+  def forward_and_log_det(self, x: Array, c: Array) -> Tuple[Array, Array]:
     """Computes y = f(x,c) and log|det J(f)(x,c)|."""
     x, log_det = self._bijectors[-1].forward_and_log_det(x, c)
     for bijector in reversed(self._bijectors[:-1]):
@@ -166,9 +166,7 @@ class ConditionalChain(ConditionalBijector):
       log_det += ld
     return x, log_det
 
-  def inverse_and_log_det(self,
-                          y: Array,
-                          c: Array = None) -> Tuple[Array, Array]:
+  def inverse_and_log_det(self, y: Array, c: Array) -> Tuple[Array, Array]:
     """Computes x = f^{-1}(y) and log|det J(f^{-1})(y,c)|."""
     y, log_det = self._bijectors[0].inverse_and_log_det(y, c)
     for bijector in self._bijectors[1:]:
@@ -214,31 +212,27 @@ class ConditionalInverse(ConditionalBijector):
     """The base bijector that was the input to `Inverse`."""
     return self._bijector
 
-  def forward(self, x: Array, c: Array = None) -> Array:
+  def forward(self, x: Array, c: Array) -> Array:
     """Computes y = f(x)."""
     return self._bijector.inverse(x, c)
 
-  def inverse(self, y: Array, c: Array = None) -> Array:
+  def inverse(self, y: Array, c: Array) -> Array:
     """Computes x = f^{-1}(y)."""
     return self._bijector.forward(y, c)
 
-  def forward_log_det_jacobian(self, x: Array, c: Array = None) -> Array:
+  def forward_log_det_jacobian(self, x: Array, c: Array) -> Array:
     """Computes log|det J(f)(x)|."""
     return self._bijector.inverse_log_det_jacobian(x, c)
 
-  def inverse_log_det_jacobian(self, y: Array, c: Array = None) -> Array:
+  def inverse_log_det_jacobian(self, y: Array, c: Array) -> Array:
     """Computes log|det J(f^{-1})(y)|."""
     return self._bijector.forward_log_det_jacobian(y, c)
 
-  def forward_and_log_det(self,
-                          x: Array,
-                          c: Array = None) -> Tuple[Array, Array]:
+  def forward_and_log_det(self, x: Array, c: Array) -> Tuple[Array, Array]:
     """Computes y = f(x) and log|det J(f)(x)|."""
     return self._bijector.inverse_and_log_det(x, c)
 
-  def inverse_and_log_det(self,
-                          y: Array,
-                          c: Array = None) -> Tuple[Array, Array]:
+  def inverse_and_log_det(self, y: Array, c: Array) -> Tuple[Array, Array]:
     """Computes x = f^{-1}(y) and log|det J(f^{-1})(y)|."""
     return self._bijector.forward_and_log_det(y, c)
 
@@ -262,18 +256,11 @@ class AsConditional(ConditionalBijector):
       is_constant_log_det=self._bijector.is_constant_log_det,
     )
 
-  def forward_and_log_det(self,
-                          x: Array,
-                          c: Array = None) -> Tuple[Array, Array]:
-    """Computes y = f(x,c) and log|det J(f)(x,c)|.
-    
-    NOTE: why the bijector is not conditional?
-    """
+  def forward_and_log_det(self, x: Array, c: Array) -> Tuple[Array, Array]:
+    """Computes y = f(x,c) and log|det J(f)(x,c)|."""
     return self._bijector.forward_and_log_det(x)
 
-  def inverse_and_log_det(self,
-                          y: Array,
-                          c: Array = None) -> Tuple[Array, Array]:
+  def inverse_and_log_det(self, y: Array, c: Array) -> Tuple[Array, Array]:
     """Computes x = f^{-1}(y,c) and log|det J(f^{-1})(y,c)|."""
     return self._bijector.inverse_and_log_det(y)
 
@@ -313,7 +300,7 @@ class ConditionalTransformed(Transformed):
       # pylint: disable-next=invalid-unary-operand-type
       self._batch_shape = shape_dtype.shape[:-self.bijector.event_ndims_out]
 
-  def log_prob(self, value: EventT, cond: Array = None) -> Array:
+  def log_prob(self, value: EventT, cond: Array) -> Array:
     """See `Distribution.log_prob`."""
     x, ildj_y = self.bijector.inverse_and_log_det(value, cond)
     lp_x = self.distribution.log_prob(x)
@@ -336,9 +323,6 @@ class ConditionalTransformed(Transformed):
 
     Returns:
       A sample of shape `sample_shape + self.batch_shape + self.event_shape`.
-
-    NOTE: cond does not default value None, may be a caveat for unconditional
-    models.
     """
     rng, sample_shape = dist_base.convert_seed_and_sample_shape(
       seed, sample_shape
@@ -357,11 +341,7 @@ class ConditionalTransformed(Transformed):
     seed: Union[IntLike, PRNGKey],
     sample_shape: Union[IntLike, Sequence[IntLike]] = ()
   ) -> Tuple[EventT, Array]:
-    """Returns a sample and associated log probability. See `sample`.
-
-    NOTE: cond does not default value None, may be a caveat for unconditional
-    models.
-    """
+    """Returns a sample and associated log probability. See `sample`."""
     rng, sample_shape = dist_base.convert_seed_and_sample_shape(
       seed, sample_shape
     )
@@ -373,16 +353,14 @@ class ConditionalTransformed(Transformed):
     )
     return samples, log_prob
 
-  def _sample_n(self, rng: PRNGKey, n: int, cond: Array = None) -> Array:
+  def _sample_n(self, rng: PRNGKey, n: int, cond: Array) -> Array:
     """Returns `n` samples."""
     x = self.distribution.sample(seed=rng, sample_shape=n)
     y = jax.vmap(self.bijector.forward)(x, cond)
     return y
 
-  def _sample_n_and_log_prob(self,
-                             rng: PRNGKey,
-                             n: int,
-                             cond: Array = None) -> Tuple[Array, Array]:
+  def _sample_n_and_log_prob(self, rng: PRNGKey, n: int,
+                             cond: Array) -> Tuple[Array, Array]:
     """Returns `n` samples and their log probs.
 
     This function is more efficient than calling `sample` and `log_prob`
@@ -401,7 +379,7 @@ class ConditionalTransformed(Transformed):
     lp_y = jax.vmap(jnp.subtract)(lp_x, fldj)
     return y, lp_y
 
-  def mean(self, cond: Array = None) -> Array:
+  def mean(self, cond: Array) -> Array:
     """Calculates the mean."""
     if self.bijector.is_constant_jacobian:
       return self.bijector.forward(self.distribution.mean(), cond)
@@ -411,7 +389,7 @@ class ConditionalTransformed(Transformed):
         "because its bijector's Jacobian is not known to be constant."
       )
 
-  def mode(self, cond: Array = None) -> Array:
+  def mode(self, cond: Array) -> Array:
     """Calculates the mode."""
     if self.bijector.is_constant_log_det:
       return self.bijector.forward(self.distribution.mode(), cond)
@@ -424,7 +402,7 @@ class ConditionalTransformed(Transformed):
 
   def entropy(  # pylint: disable=arguments-differ
       self,
-      cond: Array = None,
+      cond: Array,
       input_hint: Optional[Array] = None) -> Array:
     """Calculates the Shannon entropy (in Nats).
 
