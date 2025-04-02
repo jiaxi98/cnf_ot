@@ -11,7 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+"""
+NOTE: The only difference between this file and the one in current source code
+is that one set the cond argument to have default value of None, which
+is used for unconditional normalizing flows.
+"""
 from typing import Any, Callable, Optional, Sequence, Tuple
 
 import jax.numpy as jnp
@@ -73,9 +77,7 @@ class Autoregressive(ConditionalBijector):
     bijector = conversion.as_bijector(self._bijector(params))
     return bijector
 
-  def forward_and_log_det(self,
-                          x: Array,
-                          c: Array = None) -> Tuple[Array, Array]:
+  def forward_and_log_det(self, x: Array, c: Array) -> Tuple[Array, Array]:
     """Computes y = f(x,c) and log|det J(f)(x,c)|."""
     self._check_forward_input_shape(x)
 
@@ -106,9 +108,7 @@ class Autoregressive(ConditionalBijector):
 
     return y, logdet
 
-  def inverse_and_log_det(self,
-                          y: Array,
-                          c: Array = None) -> Tuple[Array, Array]:
+  def inverse_and_log_det(self, y: Array, c: Array) -> Tuple[Array, Array]:
     """Computes x = f^{-1}(y,c) and log|det J(f^{-1})(y,c)|."""
     self._check_inverse_input_shape(y)
 

@@ -11,6 +11,65 @@ from matplotlib import pyplot as plt
 from cnf_ot.types import PRNGKey
 
 
+###############################################################################
+# visualizations for unconditional normalizing flows
+###############################################################################
+def plot_dim_reduction(
+  forward_fn: callable,
+  params: hk.Params,
+  samples: jnp.ndarray,
+):
+
+  samples_ = forward_fn(params, samples)
+  fig, axs = plt.subplots(1, 2, figsize=(6, 3))
+  axs[0].scatter(samples[..., 0], samples[..., 1], s=1)
+  axs[0].set_title("Original")
+  axs[1].scatter(samples_[..., 0], samples_[..., 1], s=1)
+  axs[1].set_title("Transformed")
+  fig.tight_layout()
+  plt.savefig("results/fig/dr.pdf")
+  plt.clf()
+
+
+def plot_samples_snapshot(
+  sample_fn: callable,
+  params: hk.Params,
+  rng: PRNGKey,
+  batch_size,
+):
+
+  samples = sample_fn(params, seed=rng, sample_shape=(batch_size, ))
+  plt.scatter(
+    samples[..., 0],
+    samples[..., 1],
+    s=1,
+  )
+  plt.savefig("results/fig/samples.pdf")
+  plt.clf()
+
+
+def plot_density_snapshot(
+  log_prob_fn: callable,
+  params: hk.Params,
+):
+
+  x_min = -6
+  x_max = 6
+  x = np.linspace(x_min, x_max, 100)
+  y = np.linspace(x_min, x_max, 100)
+  X, Y = np.meshgrid(x, y)
+  XY = jnp.hstack([X.reshape(100**2, 1), Y.reshape(100**2, 1)])
+  log_prob = log_prob_fn(params, XY)
+  plt.imshow(jnp.exp(log_prob.reshape(100, 100)))
+  plt.axis("off")
+
+  plt.savefig("results/fig/density.pdf")
+  plt.clf()
+
+
+###############################################################################
+# visualizations for conditional normalizing flows
+###############################################################################
 def calc_kinetic_energy(
   sample_fn,
   params: hk.Params,
