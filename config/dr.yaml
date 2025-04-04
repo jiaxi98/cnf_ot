@@ -1,5 +1,6 @@
 general:
   type: s1 # s2
+  model: enc_dec # dec_only
   dim: 2
   dx: 0.01
   dt: 0.01
