@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 
 import cnf_ot.utils as utils
-from cnf_ot.flows import RQSFlow
+from cnf_ot.models.flows import RQSFlow
 from cnf_ot.types import OptState, PRNGKey
 
 

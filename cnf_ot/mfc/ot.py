@@ -1,23 +1,20 @@
 """A simple example of a flow model trained to solve the Wassserstein geodesic problem."""
 from functools import partial
-from typing import Iterator, Optional, Tuple
+from typing import Tuple
 
-import distrax
 import haiku as hk
 import jax
 import jax.numpy as jnp
-import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import optax
-import tensorflow_datasets as tfds
-from absl import app, flags, logging
+from absl import app, flags
 from jaxtyping import Array
 from tqdm import tqdm
 
 import cnf_ot.utils as utils
-from cnf_ot.flows import RQSFlow
-from cnf_ot.types import Batch, OptState, PRNGKey
+from cnf_ot.models.flows import RQSFlow
+from cnf_ot.types import OptState, PRNGKey
 
 flags.DEFINE_integer(
   "flow_num_layers", 2, "Number of layers to use in the flow."

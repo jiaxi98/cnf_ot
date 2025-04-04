@@ -16,8 +16,8 @@ from jaxtyping import Array
 from tqdm import tqdm
 
 import cnf_ot.utils as utils
-from cnf_ot import applications
-from cnf_ot.flows import RQSFlow
+from cnf_ot.mfc import applications
+from cnf_ot.models.flows import RQSFlow
 from cnf_ot.types import OptState, PRNGKey
 
 jax.config.update("jax_enable_x64", True)
@@ -138,16 +138,18 @@ def main(config_dict: ml_collections.ConfigDict):
   eval_rng, rng = jax.random.split(rng)
   if _type == "ot":
     print(
-      "kinetic energy with more samples: ",
-      utils.calc_kinetic_energy(
-        sample_fn, params, eval_rng, batch_size=65536, t_size=10000, dim=dim
+      "kinetic energy with more samples: {:.3e}".format(
+        utils.calc_kinetic_energy(
+          sample_fn, params, eval_rng, batch_size=65536, t_size=10000, dim=dim
+        )
       )
     )
 
     print(
-      "kinetic energy with less samples: ",
-      utils.calc_kinetic_energy(
-        sample_fn, params, eval_rng, batch_size=4096, t_size=1000, dim=dim
+      "kinetic energy with less samples: {:.3e}".format(
+        utils.calc_kinetic_energy(
+          sample_fn, params, eval_rng, batch_size=4096, t_size=1000, dim=dim
+        )
       )
     )
   elif _type == "rwpo":
@@ -162,8 +164,8 @@ def main(config_dict: ml_collections.ConfigDict):
     )
     e_pot = partial(applications.potential_loss_fn, model, dim, a,
                     subtype)(params, T, eval_rng, 65536)
-    print("kinetic energy: ", e_kin)
-    print("potential energy: ", e_pot)
+    print(f"kinetic energy: {e_kin:.3e}")
+    print(f"potential energy: {e_pot:.3e}")
 
     if subtype == "quadratic":
       # NOTE: this is the true value for quadratic potential and Gaussian IC
@@ -220,7 +222,7 @@ def main(config_dict: ml_collections.ConfigDict):
       fake_cond_ = jnp.ones((1, )) * T
       prob1 = jnp.exp(log_prob_fn(params, XY, cond=fake_cond_))
       prob2 = target_prob(XY)
-      print(jnp.sum((prob1 - prob2)**2))
+      print(f"{jnp.sum((prob1 - prob2)**2):.3e}")
       plt.figure(figsize=(4, 2))
       plt.subplot(121)
       plt.imshow(prob1.reshape(100, 100))
@@ -229,7 +231,7 @@ def main(config_dict: ml_collections.ConfigDict):
       plt.savefig("results/fig/double_well.pdf")
       true_val = cost_rwpo(eval_rng, 100, 1000)
     print(
-      "total energy: {:.3f}|relative err: {:.3e}".format(
+      "total energy: {:.3e}|relative err: {:.3e}".format(
         e_kin + e_pot, (e_kin + e_pot - true_val) / true_val * 100
       )
     )

@@ -11,12 +11,11 @@ python -m venv venv/cnf_ot
 source venv/cnf_ot/bin/activate
 cd cnf_ot
 pip install .
-pip install -r requirements.txt
 ```
 2. Modify config/mfc.yaml for different settings (see following instructions
 ) and solve the problem via:
 ```python
-python cnf_ot/solvers.py
+python cnf_ot/mfc/solvers.py
 ```
 
 ## Specify problem parameters

@@ -4,7 +4,7 @@ hydra:
     dir: .
 
 general:
-  type: fp # ot, rwpo, fp
+  type: rwpo # ot, rwpo, fp
   dim: 2
   dx: 0.01
   dt: 0.01

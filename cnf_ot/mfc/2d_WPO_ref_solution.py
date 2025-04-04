@@ -2,11 +2,8 @@
 import os
 import pickle
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from scipy.interpolate import RegularGridInterpolator, griddata
-from torch.autograd import grad
 
 dtype = torch.float
 device = torch.device('cpu')
