@@ -19,21 +19,39 @@ def plot_dim_reduction_reconst(
   inverse_fn: callable,
   params_1: hk.Params,
   params_2: hk.Params,
+  dim: int,
   sub_dim: int,
   samples: jnp.ndarray,
-  color: jnp.ndarray=None,
 ):
 
-  samples_ = forward_fn(params_1, samples)
-  samples_ = samples_.at[:, sub_dim:].set(0)
-  reconst = inverse_fn(params_2, samples_)
-  fig, axs = plt.subplots(1, 3, figsize=(9, 3))
-  axs[0].scatter(samples[..., 0], samples[..., 1], s=1, c=color)
-  axs[0].set_title("Original")
-  axs[1].scatter(samples_[..., 0], samples_[..., 1], s=1, c=color)
-  axs[1].set_title("Transformed")
-  axs[2].scatter(reconst[..., 0], reconst[..., 1], s=1, c=color)
-  axs[2].set_title("reconstructed")
+  transf = forward_fn(params_1, samples)
+  transf = transf.at[:, sub_dim:].set(0)
+  reconst = inverse_fn(params_2, transf)
+  if dim == 2:
+    fig, axs = plt.subplots(1, 3, figsize=(9, 3))
+    axs[0].scatter(samples[..., 0], samples[..., 1], s=1, c=samples[..., 0])
+    axs[0].set_title("original")
+    axs[1].scatter(transf[..., 0], transf[..., 1], s=1, c=samples[..., 0])
+    axs[1].set_title("transformed")
+    axs[2].scatter(reconst[..., 0], reconst[..., 1], s=1, c=samples[..., 0])
+    axs[2].set_title("reconstructed")
+  elif dim == 3:
+    fig = plt.figure(figsize=(9, 3))
+    ax = fig.add_subplot(131, projection='3d')
+    ax.scatter(
+      samples[..., 0], samples[..., 1], samples[..., 2], s=1, c=samples[..., 0]
+    )
+    ax.set_title("original")
+    ax = fig.add_subplot(132, projection='3d')
+    ax.scatter(
+      transf[..., 0], transf[..., 1], transf[..., 2], s=1, c=samples[..., 0]
+    )
+    ax.set_title("transformed")
+    ax = fig.add_subplot(133, projection='3d')
+    ax.scatter(
+      reconst[..., 0], reconst[..., 1], reconst[..., 2], s=1, c=samples[..., 0]
+    )
+    ax.set_title("reconstructed")
   fig.tight_layout()
   plt.savefig("results/fig/dr.pdf")
   plt.clf()

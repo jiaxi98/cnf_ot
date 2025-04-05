@@ -20,17 +20,12 @@ from cnf_ot.types import OptState, PRNGKey
 def main(config_dict: ml_collections.ConfigDict):
 
   config = Box(config_dict)
-  dim = config.general.dim
-  if config.general.type == "s1":
-    sub_dim = 1
-  elif config.general.type == "s2":
-    sub_dim = 2
-  elif config.general.type == "t2":
-    sub_dim = 2
-  model = config.general.model
-  rng = jax.random.PRNGKey(config.general.seed)
+  dim = config.dim
+  model = config.model
+  rng = jax.random.PRNGKey(config.seed)
   epochs = config.train.epochs
   batch_size = config.train.batch_size
+  sub_dim = int(config.type[1])
 
   decoder = RQSFlow(
     event_shape=(dim, ),
@@ -66,7 +61,7 @@ def main(config_dict: ml_collections.ConfigDict):
   schedule = optax.piecewise_constant_schedule(
     init_value=config.train.lr,
     boundaries_and_scales={int(b): 0.1
-      for b in jnp.arange(10000, epochs, 10000)}
+      for b in jnp.arange(5000, epochs, 5000)}
   )
   optimizer = optax.adam(schedule)
   opt_state = optimizer.init(params)
@@ -74,15 +69,28 @@ def main(config_dict: ml_collections.ConfigDict):
   def generate_low_dim_data(
     key: PRNGKey, dim: int, type_: str, batch_size: int
   ):
-    if type_ == "s1":
+    if type_[0] == "S":
+      # sphere type
       samples = jnp.zeros((batch_size, dim))
-      samples = samples.at[:, :2].set(random.normal(key, (batch_size, 2)))
+      samples = samples.at[:, :sub_dim + 1].set(
+        random.normal(key, (batch_size, sub_dim + 1))
+      )
       samples /= jnp.sqrt(jnp.sum(samples**2, axis=-1))[:, None]
-      return samples
-    elif type_ == "s2":
-      pass
-    elif type_ == "t2":
-      pass
+    elif type_[0] == "T":
+      if sub_dim != 2:
+        raise ValueError("Only 2D torus is supported")
+      R = 5
+      r = 1
+      theta = random.uniform(key, (batch_size, 2), minval=0, maxval=2 * jnp.pi)
+      samples = jnp.zeros((batch_size, dim))
+      samples = samples.at[:, :dim].set(jnp.vstack([
+        (R + r * jnp.cos(theta[:, 1])) * jnp.sin(theta[:, 0]),
+        (R + r * jnp.cos(theta[:, 1])) * jnp.cos(theta[:, 0]),
+        r * jnp.sin(theta[:, 1]),
+      ]).T)
+    orthog_trans = random.normal(key, (dim, dim))
+    orthog_trans, _ = jnp.linalg.qr(orthog_trans)
+    return samples @ orthog_trans
 
   if model == "enc_dec":
     def loss_fn(params: hk.Params, x: jnp.ndarray) -> Array:
@@ -118,8 +126,10 @@ def main(config_dict: ml_collections.ConfigDict):
   # training loop
   loss_hist = []
   iters = tqdm(range(epochs))
-  samples = generate_low_dim_data(rng, dim, "s1", batch_size)
+  # samples = generate_low_dim_data(rng, dim, config.type, batch_size)
   for _ in iters:
+    rng, key = jax.random.split(rng)
+    samples = generate_low_dim_data(key, dim, config.type, batch_size)
     loss, params, opt_state = update(params, opt_state)
     loss_hist.append(loss)
     lr = schedule(_)
@@ -132,30 +142,31 @@ def main(config_dict: ml_collections.ConfigDict):
   plt.clf()
 
   # this color is only for visualizing ordered samples, e.g. unit circle
-  if config.general.type == "s1":
-    color = random.uniform(rng, (batch_size,))
-    samples = samples.at[:, 0].set(jnp.sin(2 * jnp.pi * color))
-    samples = samples.at[:, 1].set(jnp.cos(2 * jnp.pi * color))
-  if model == "enc_dec":
-    utils.plot_dim_reduction_reconst(
-      encoder_forward_fn,
-      decoder_forward_fn,
-      params["encoder"],
-      params["decoder"],
-      sub_dim,
-      samples,
-      color
-    )
-  elif model == "dec_only":
-    utils.plot_dim_reduction_reconst(
-      decoder_inverse_fn,
-      decoder_forward_fn,
-      params,
-      params,
-      sub_dim,
-      samples,
-      color
-    )
+  if dim <= 3:
+    if config.type == "s1":
+      color = random.uniform(rng, (batch_size,))
+      samples = samples.at[:, 0].set(jnp.sin(2 * jnp.pi * color))
+      samples = samples.at[:, 1].set(jnp.cos(2 * jnp.pi * color))
+    if model == "enc_dec":
+      utils.plot_dim_reduction_reconst(
+        encoder_forward_fn,
+        decoder_forward_fn,
+        params["encoder"],
+        params["decoder"],
+        dim,
+        sub_dim,
+        samples,
+      )
+    elif model == "dec_only":
+      utils.plot_dim_reduction_reconst(
+        decoder_inverse_fn,
+        decoder_forward_fn,
+        params,
+        params,
+        dim,
+        sub_dim,
+        samples,
+      )
   # samples_ = encoder_forward_fn(params["encoder"], samples)
   breakpoint()
 
