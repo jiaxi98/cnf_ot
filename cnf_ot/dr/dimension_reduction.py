@@ -51,8 +51,10 @@ def main(config_dict: ml_collections.ConfigDict):
     encoder_forward_fn = jax.jit(encoder.apply.forward)
     encoder_rng, decoder_rng, rng = jax.random.split(rng, 3)
     # unconditional NF
-    params = {"encoder": encoder.init(encoder_rng, jnp.zeros((1, dim))),
-              "decoder": decoder.init(decoder_rng, jnp.zeros((1, dim)))}
+    params = {
+      "encoder": encoder.init(encoder_rng, jnp.zeros((1, dim))),
+      "decoder": decoder.init(decoder_rng, jnp.zeros((1, dim)))
+    }
   elif model == "dec_only":
     # decoder only architecture
     decoder_rng, rng = jax.random.split(rng)
@@ -61,7 +63,7 @@ def main(config_dict: ml_collections.ConfigDict):
   schedule = optax.piecewise_constant_schedule(
     init_value=config.train.lr,
     boundaries_and_scales={int(b): 0.1
-      for b in jnp.arange(5000, epochs, 5000)}
+                           for b in jnp.arange(5000, epochs, 5000)}
   )
   optimizer = optax.adam(schedule)
   opt_state = optimizer.init(params)
@@ -83,16 +85,21 @@ def main(config_dict: ml_collections.ConfigDict):
       r = 1
       theta = random.uniform(key, (batch_size, 2), minval=0, maxval=2 * jnp.pi)
       samples = jnp.zeros((batch_size, dim))
-      samples = samples.at[:, :dim].set(jnp.vstack([
-        (R + r * jnp.cos(theta[:, 1])) * jnp.sin(theta[:, 0]),
-        (R + r * jnp.cos(theta[:, 1])) * jnp.cos(theta[:, 0]),
-        r * jnp.sin(theta[:, 1]),
-      ]).T)
+      samples = samples.at[:, :dim].set(
+        jnp.vstack(
+          [
+            (R + r * jnp.cos(theta[:, 1])) * jnp.sin(theta[:, 0]),
+            (R + r * jnp.cos(theta[:, 1])) * jnp.cos(theta[:, 0]),
+            r * jnp.sin(theta[:, 1]),
+          ]
+        ).T
+      )
     orthog_trans = random.normal(key, (dim, dim))
     orthog_trans, _ = jnp.linalg.qr(orthog_trans)
     return samples @ orthog_trans
 
   if model == "enc_dec":
+
     def loss_fn(params: hk.Params, x: jnp.ndarray) -> Array:
       y = encoder_forward_fn(params["encoder"], x)
       y = y.at[:, sub_dim:].set(0)
@@ -108,6 +115,7 @@ def main(config_dict: ml_collections.ConfigDict):
       # return jnp.mean(jnp.sum(y[:, sub_dim:]**2, axis=-1)) -\
       #   jnp.mean(jnp.log(jnp.sum(y**2, axis=-1))) * .1
   elif model == "dec_only":
+
     def loss_fn(params: hk.Params, x: jnp.ndarray) -> Array:
       y = decoder_inverse_fn(params, x)
       y = y.at[:, sub_dim:].set(0)
@@ -144,7 +152,7 @@ def main(config_dict: ml_collections.ConfigDict):
   # this color is only for visualizing ordered samples, e.g. unit circle
   if dim <= 3:
     if config.type == "s1":
-      color = random.uniform(rng, (batch_size,))
+      color = random.uniform(rng, (batch_size, ))
       samples = samples.at[:, 0].set(jnp.sin(2 * jnp.pi * color))
       samples = samples.at[:, 1].set(jnp.cos(2 * jnp.pi * color))
     if model == "enc_dec":
