@@ -134,10 +134,12 @@ def main(config_dict: ml_collections.ConfigDict):
   # training loop
   loss_hist = []
   iters = tqdm(range(epochs))
-  # samples = generate_low_dim_data(rng, dim, config.type, batch_size)
+  param_count = sum(x.size for x in jax.tree.leaves(params))
+  print("Network parameters: {}".format(param_count))
+  samples = generate_low_dim_data(rng, dim, config.type, batch_size)
   for _ in iters:
     rng, key = jax.random.split(rng)
-    samples = generate_low_dim_data(key, dim, config.type, batch_size)
+    # samples = generate_low_dim_data(key, dim, config.type, batch_size)
     loss, params, opt_state = update(params, opt_state)
     loss_hist.append(loss)
     lr = schedule(_)

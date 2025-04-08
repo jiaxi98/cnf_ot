@@ -1,4 +1,4 @@
-type: T2 # S[N], T[N]
+type: S2 # S[N], T[N]
 model: enc_dec # dec_only
 dim: 3
 dx: 0.01
