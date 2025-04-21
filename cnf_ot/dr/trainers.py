@@ -10,7 +10,6 @@ from jaxtyping import Array
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 
-
 from cnf_ot.models.flows import RQSFlow
 from cnf_ot.types import OptState, PRNGKey
 
@@ -100,13 +99,11 @@ def train(
     new_params = optax.apply_updates(params, updates)
     return loss, new_params, new_opt_state
 
-  # training loop
   loss_hist = []
   iters = tqdm(range(epochs))
-  param_count = sum(x.size for x in jax.tree.leaves(params))
-  print("Network parameters: {}".format(param_count))
+  # param_count = sum(x.size for x in jax.tree.leaves(params))
+  # print("Network parameters: {}".format(param_count))
   for _ in iters:
-    rng, key = jax.random.split(rng)
     # samples = generate_low_dim_data(key, dim, config.type, batch_size)
     loss, params, opt_state = update(params, opt_state)
     loss_hist.append(loss)
@@ -119,6 +116,6 @@ def train(
   plt.savefig(f"results/fig/loss_{model}.png")
   plt.clf()
   if model == "enc_dec":
-    return encoder, decoder, params
+    return encoder, decoder, params, loss_hist
   elif model == "dec_only":
-    return decoder, params
+    return decoder, params, loss_hist

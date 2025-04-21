@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import ml_collections
 import yaml
+from absl import logging
 from box import Box
 from jax import random
 
@@ -42,7 +43,7 @@ def main(config_dict: ml_collections.ConfigDict):
       )
       start = jnp.array([6.0, 0.0, 0.0])
       end = jnp.array([-6.0, 0.0, 0.0])
-      r = 9
+      r = 8
     if rotate:
       orthog_trans = random.normal(key, (dim, dim))
       orthog_trans, _ = jnp.linalg.qr(orthog_trans)
@@ -50,6 +51,39 @@ def main(config_dict: ml_collections.ConfigDict):
       start = start @ orthog_trans
       end = end @ orthog_trans
     return samples, start, end, r
+  
+  def dynamics_path_finder(init_r: float = 5, relax: float = 1.5):
+    charts = []
+    encoders = []
+    decoders = []
+    params = []
+    pos = start
+    index = 0
+
+    while True:
+      print(f"Finding {index}th chart...")
+      r = init_r
+      while True:
+        r /= relax
+        chart = data[jnp.linalg.norm(data - pos, axis=-1) < r]
+        encoder, decoder, params_, loss = train(
+          rng, chart, dim, sub_dim, model, epochs, config
+        )
+        if loss[-1] < 1e-2:
+          break
+      charts.append(chart)
+      encoders.append(encoder)
+      decoders.append(decoder)
+      params.append(params_)
+      print(f"Chart {index} found radius {r:.2f} with loss {loss[-1]}")
+      if jnp.linalg.norm(pos - end) < r:
+        print(f"Chart {index} is close to end point")
+        break
+      pos = chart[jnp.argmin(jnp.linalg.norm(chart - end, axis=-1))]
+      index += 1
+      print(f"L2 dist between current pos and end: {jnp.linalg.norm(pos-end):.3f}")
+      breakpoint()
+    return charts, encoders, decoders
 
   config = Box(config_dict)
   dim = config.dim
@@ -65,12 +99,14 @@ def main(config_dict: ml_collections.ConfigDict):
   overlap = data2[jnp.linalg.norm(data2 - start[None], axis=-1) < r]
   print(f"data: {data.shape[0]}; data1: {data1.shape[0]};\
     data2: {data2.shape[0]}; overlap: {overlap.shape[0]}")
+  
+  dynamics_path_finder()
 
   if model == "enc_dec":
-    encoder1, decoder1, params1 = train(
+    encoder1, decoder1, params1, _ = train(
       rng, data1, dim, sub_dim, model, epochs, config
     )
-    encoder2, decoder2, params2 = train(
+    encoder2, decoder2, params2, _ = train(
       rng, data2, dim, sub_dim, model, epochs, config
     )
     encoders = [encoder1, encoder2]
@@ -78,8 +114,11 @@ def main(config_dict: ml_collections.ConfigDict):
     params = [params1, params2]
     encoder_forward_fn = jax.jit(encoder1.apply.forward)
   elif model == "dec_only":
-    decoder, params = train(
-      rng, data, dim, sub_dim, model, epochs, config
+    decoder1, params1, _ = train(
+      rng, data1, dim, sub_dim, model, epochs, config
+    )
+    decoder2, params2, _ = train(
+      rng, data2, dim, sub_dim, model, epochs, config
     )
   decoder_forward_fn = jax.jit(decoder1.apply.forward)
   decoder_inverse_fn = jax.jit(decoder1.apply.inverse)
@@ -104,8 +143,8 @@ def main(config_dict: ml_collections.ConfigDict):
       utils.plot_dim_reduction_reconst(
         decoder_inverse_fn,
         decoder_forward_fn,
-        params,
-        params,
+        params1,
+        params1,
         dim,
         sub_dim,
         data,
