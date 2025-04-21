@@ -1,162 +1,120 @@
-from typing import Tuple
-
-import haiku as hk
 import jax
 import jax.numpy as jnp
 import ml_collections
-import optax
 import yaml
 from box import Box
 from jax import random
-from jaxtyping import Array
-from matplotlib import pyplot as plt
-from tqdm import tqdm
 
+from cnf_ot.types import PRNGKey
 import cnf_ot.utils as utils
-from cnf_ot.models.flows import RQSFlow
-from cnf_ot.types import OptState, PRNGKey
-
+from cnf_ot.dr.trainers import train
 
 def main(config_dict: ml_collections.ConfigDict):
 
+  def generate_low_dim_data(
+    key: PRNGKey, dim: int, type_: str, batch_size: int, rotate: bool = True
+  ):
+    if type_[0] == "S":
+      # sphere type
+      samples = jnp.zeros((batch_size, dim))
+      samples = samples.at[:, :sub_dim + 1].set(
+        random.normal(key, (batch_size, sub_dim + 1))
+      )
+      samples /= jnp.sqrt(jnp.sum(samples**2, axis=-1))[:, None]
+      start = jnp.array([0.0, 0.0, 1.0])
+      end = jnp.array([0.0, 0.0, -1.0])
+      r = 1.5
+    elif type_[0] == "T":
+      if sub_dim != 2:
+        raise ValueError("Only 2D torus is supported")
+      R = 5
+      r = 1
+      theta = random.uniform(key, (batch_size, 2), minval=0, maxval=2 * jnp.pi)
+      samples = jnp.zeros((batch_size, dim))
+      samples = samples.at[:, :dim].set(
+        jnp.vstack(
+          [
+            (R + r * jnp.cos(theta[:, 1])) * jnp.sin(theta[:, 0]),
+            (R + r * jnp.cos(theta[:, 1])) * jnp.cos(theta[:, 0]),
+            r * jnp.sin(theta[:, 1]),
+          ]
+        ).T
+      )
+      start = jnp.array([6.0, 0.0, 0.0])
+      end = jnp.array([-6.0, 0.0, 0.0])
+      r = 9
+    if rotate:
+      orthog_trans = random.normal(key, (dim, dim))
+      orthog_trans, _ = jnp.linalg.qr(orthog_trans)
+      samples = samples @ orthog_trans
+      start = start @ orthog_trans
+      end = end @ orthog_trans
+    return samples, start, end, r
+
   config = Box(config_dict)
-  dim = config.general.dim
-  if config.general.type == "s1":
-    sub_dim = 1
-  elif config.general.type == "s2":
-    sub_dim = 2
-  elif config.general.type == "t2":
-    sub_dim = 2
-  model = config.general.model
-  rng = jax.random.PRNGKey(config.general.seed)
+  dim = config.dim
+  model = config.model
+  rng = jax.random.PRNGKey(config.seed)
   epochs = config.train.epochs
   batch_size = config.train.batch_size
+  sub_dim = int(config.type[1])
+  
+  data, start, end, r = generate_low_dim_data(rng, dim, config.type, batch_size)
+  data1 = data[jnp.linalg.norm(data - start[None], axis=-1) < r]
+  data2 = data[jnp.linalg.norm(data - end[None], axis=-1) < r]
+  overlap = data2[jnp.linalg.norm(data2 - start[None], axis=-1) < r]
+  print(f"data: {data.shape[0]}; data1: {data1.shape[0]};\
+    data2: {data2.shape[0]}; overlap: {overlap.shape[0]}")
 
-  decoder = RQSFlow(
-    event_shape=(dim, ),
-    num_layers=config.cnf.flow_num_layers,
-    hidden_sizes=[config.cnf.hidden_size] * config.cnf.mlp_num_layers,
-    num_bins=config.cnf.num_bins,
-    periodized=False,
-    cond_shape=(0, ),
-  )
-  decoder = hk.without_apply_rng(hk.multi_transform(decoder))
-  decoder_forward_fn = jax.jit(decoder.apply.forward)
   if model == "enc_dec":
-    # using both an encoder and a decoder
-    encoder = RQSFlow(
-      event_shape=(dim, ),
-      num_layers=config.cnf.flow_num_layers,
-      hidden_sizes=[config.cnf.hidden_size] * config.cnf.mlp_num_layers,
-      num_bins=config.cnf.num_bins,
-      periodized=False,
-      cond_shape=(0, ),
+    encoder1, decoder1, params1 = train(
+      rng, data1, dim, sub_dim, model, epochs, config
     )
-    encoder = hk.without_apply_rng(hk.multi_transform(encoder))
-    encoder_forward_fn = jax.jit(encoder.apply.forward)
-    encoder_rng, decoder_rng, rng = jax.random.split(rng, 3)
-    # unconditional NF
-    params = {"encoder": encoder.init(encoder_rng, jnp.zeros((1, dim))),
-              "decoder": decoder.init(decoder_rng, jnp.zeros((1, dim)))}
+    encoder2, decoder2, params2 = train(
+      rng, data2, dim, sub_dim, model, epochs, config
+    )
+    encoders = [encoder1, encoder2]
+    decoders = [decoder1, decoder2]
+    params = [params1, params2]
+    encoder_forward_fn = jax.jit(encoder1.apply.forward)
   elif model == "dec_only":
-    # decoder only architecture
-    decoder_rng, rng = jax.random.split(rng)
-    decoder_inverse_fn = jax.jit(decoder.apply.inverse)
-    params = decoder.init(decoder_rng, jnp.zeros((1, dim)))
-  schedule = optax.piecewise_constant_schedule(
-    init_value=config.train.lr,
-    boundaries_and_scales={int(b): 0.1
-      for b in jnp.arange(10000, epochs, 10000)}
-  )
-  optimizer = optax.adam(schedule)
-  opt_state = optimizer.init(params)
-
-  def generate_low_dim_data(
-    key: PRNGKey, dim: int, type_: str, batch_size: int
-  ):
-    if type_ == "s1":
-      samples = jnp.zeros((batch_size, dim))
-      samples = samples.at[:, :2].set(random.normal(key, (batch_size, 2)))
-      samples /= jnp.sqrt(jnp.sum(samples**2, axis=-1))[:, None]
-      return samples
-    elif type_ == "s2":
-      pass
-    elif type_ == "t2":
-      pass
-
-  if model == "enc_dec":
-    def loss_fn(params: hk.Params, x: jnp.ndarray) -> Array:
-      y = encoder_forward_fn(params["encoder"], x)
-      y = y.at[:, sub_dim:].set(0)
-      x_reconstructed = decoder_forward_fn(params["decoder"], y)
-      return jnp.mean(jnp.sum((x - x_reconstructed)**2, axis=-1))
-      # NOTE: the following loss will force the map to shrink to small value
-      # return jnp.mean(jnp.sum(y[:, sub_dim:]**2, axis=-1))
-
-      # NOTE: the second constraint is too hard, forcing all the points to
-      # shrink to (1, 0)
-      # return jnp.mean(jnp.sum(y[:, sub_dim:]**2, axis=-1)) +\
-      #   jnp.mean((jnp.sum(y**2, axis=-1) - 1)**2)
-      # return jnp.mean(jnp.sum(y[:, sub_dim:]**2, axis=-1)) -\
-      #   jnp.mean(jnp.log(jnp.sum(y**2, axis=-1))) * .1
-  elif model == "dec_only":
-    def loss_fn(params: hk.Params, x: jnp.ndarray) -> Array:
-      y = decoder_inverse_fn(params, x)
-      y = y.at[:, sub_dim:].set(0)
-      x_reconstructed = decoder_forward_fn(params, y)
-      return jnp.mean(jnp.sum((x - x_reconstructed)**2, axis=-1))
-
-  @jax.jit
-  def update(params: hk.Params,
-             opt_state: OptState) -> Tuple[Array, hk.Params, OptState]:
-    """Single SGD update step."""
-    loss, grads = jax.value_and_grad(loss_fn)(params, samples)
-    updates, new_opt_state = optimizer.update(grads, opt_state)
-    new_params = optax.apply_updates(params, updates)
-    return loss, new_params, new_opt_state
-
-  # training loop
-  loss_hist = []
-  iters = tqdm(range(epochs))
-  samples = generate_low_dim_data(rng, dim, "s1", batch_size)
-  for _ in iters:
-    loss, params, opt_state = update(params, opt_state)
-    loss_hist.append(loss)
-    lr = schedule(_)
-    desc_str = f"{lr:.2e}|{loss=:.4e}"
-    iters.set_description_str(desc_str)
-
-  plt.plot(loss_hist)
-  plt.yscale("log")
-  plt.savefig(f"results/fig/loss_{model}.pdf")
-  plt.clf()
+    decoder, params = train(
+      rng, data, dim, sub_dim, model, epochs, config
+    )
+  decoder_forward_fn = jax.jit(decoder1.apply.forward)
+  decoder_inverse_fn = jax.jit(decoder1.apply.inverse)
 
   # this color is only for visualizing ordered samples, e.g. unit circle
-  if config.general.type == "s1":
-    color = random.uniform(rng, (batch_size,))
-    samples = samples.at[:, 0].set(jnp.sin(2 * jnp.pi * color))
-    samples = samples.at[:, 1].set(jnp.cos(2 * jnp.pi * color))
-  if model == "enc_dec":
-    utils.plot_dim_reduction_reconst(
-      encoder_forward_fn,
-      decoder_forward_fn,
-      params["encoder"],
-      params["decoder"],
-      sub_dim,
-      samples,
-      color
-    )
-  elif model == "dec_only":
-    utils.plot_dim_reduction_reconst(
-      decoder_inverse_fn,
-      decoder_forward_fn,
-      params,
-      params,
-      sub_dim,
-      samples,
-      color
-    )
+  if dim <= 3:
+    if config.type == "S1":
+      color = random.uniform(rng, (batch_size, ))
+      data = data.at[:, 0].set(jnp.sin(2 * jnp.pi * color))
+      data = data.at[:, 1].set(jnp.cos(2 * jnp.pi * color))
+    if model == "enc_dec":
+      utils.plot_dim_reduction_reconst(
+        encoder_forward_fn,
+        decoder_forward_fn,
+        params1["encoder"],
+        params1["decoder"],
+        dim,
+        sub_dim,
+        data,
+      )
+    elif model == "dec_only":
+      utils.plot_dim_reduction_reconst(
+        decoder_inverse_fn,
+        decoder_forward_fn,
+        params,
+        params,
+        dim,
+        sub_dim,
+        data,
+      )
   # samples_ = encoder_forward_fn(params["encoder"], samples)
+  utils.find_mfd_path(
+    encoders, decoders, params, data1, data2, overlap, sub_dim,
+    start, end, "S2_path.png"
+  )
   breakpoint()
 
 

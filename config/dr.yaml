@@ -1,11 +1,10 @@
-general:
-  type: s1 # s2
-  model: enc_dec # dec_only
-  dim: 2
-  dx: 0.01
-  dt: 0.01
-  t_batch_size: 1
-  seed: 42
+type: S2 # S[N], T[N]
+model: enc_dec # dec_only
+dim: 3
+dx: 0.01
+dt: 0.01
+t_batch_size: 1
+seed: 42
 
 cnf:
   flow_num_layers: 2
@@ -14,7 +13,7 @@ cnf:
   num_bins: 5
 
 train:
-  epochs: 30000
+  epochs: 10000
   lr: 0.001
   _lambda: 5000.
   batch_size: 2048

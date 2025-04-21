@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 import matplotlib.colors as mcolors
 import numpy as np
+import re
 from matplotlib import cm
 from matplotlib import pyplot as plt
 
@@ -19,23 +20,43 @@ def plot_dim_reduction_reconst(
   inverse_fn: callable,
   params_1: hk.Params,
   params_2: hk.Params,
+  dim: int,
   sub_dim: int,
   samples: jnp.ndarray,
-  color: jnp.ndarray=None,
 ):
 
-  samples_ = forward_fn(params_1, samples)
-  samples_ = samples_.at[:, sub_dim:].set(0)
-  reconst = inverse_fn(params_2, samples_)
-  fig, axs = plt.subplots(1, 3, figsize=(9, 3))
-  axs[0].scatter(samples[..., 0], samples[..., 1], s=1, c=color)
-  axs[0].set_title("Original")
-  axs[1].scatter(samples_[..., 0], samples_[..., 1], s=1, c=color)
-  axs[1].set_title("Transformed")
-  axs[2].scatter(reconst[..., 0], reconst[..., 1], s=1, c=color)
-  axs[2].set_title("reconstructed")
+  transf = forward_fn(params_1, samples)
+  transf = transf.at[:, sub_dim:].set(0)
+  reconst = inverse_fn(params_2, transf)
+  if dim == 2:
+    fig, axs = plt.subplots(1, 3, figsize=(9, 3))
+    axs[0].scatter(samples[..., 0], samples[..., 1], s=1, c=samples[..., 0])
+    axs[0].set_title("original")
+    axs[1].scatter(transf[..., 0], transf[..., 1], s=1, c=samples[..., 0])
+    axs[1].set_title("transformed")
+    axs[2].scatter(reconst[..., 0], reconst[..., 1], s=1, c=samples[..., 0])
+    axs[2].set_title("reconstructed")
+  elif dim == 3:
+    fig = plt.figure(figsize=(9, 3))
+    ax = fig.add_subplot(131, projection='3d')
+    ax.scatter(
+      samples[..., 0], samples[..., 1], samples[..., 2], s=1, c=samples[..., 0]
+    )
+    ax.set_title("original")
+    ax.view_init(elev=40, azim=45)
+    ax = fig.add_subplot(132, projection='3d')
+    ax.scatter(
+      transf[..., 0], transf[..., 1], transf[..., 2], s=1, c=samples[..., 0]
+    )
+    ax.set_title("transformed")
+    ax = fig.add_subplot(133, projection='3d')
+    ax.scatter(
+      reconst[..., 0], reconst[..., 1], reconst[..., 2], s=1, c=samples[..., 0]
+    )
+    ax.set_title("reconstructed")
+    ax.view_init(elev=40, azim=45)
   fig.tight_layout()
-  plt.savefig("results/fig/dr.pdf")
+  plt.savefig("results/fig/dr.png")
   plt.clf()
 
 
@@ -52,7 +73,7 @@ def plot_samples_snapshot(
     samples[..., 1],
     s=1,
   )
-  plt.savefig("results/fig/samples.pdf")
+  plt.savefig("results/fig/samples.png")
   plt.clf()
 
 
@@ -71,8 +92,42 @@ def plot_density_snapshot(
   plt.imshow(jnp.exp(log_prob.reshape(100, 100)))
   plt.axis("off")
 
-  plt.savefig("results/fig/density.pdf")
+  plt.savefig("results/fig/density.png")
   plt.clf()
+
+
+def find_mfd_path(
+  encoders, decoders, params, data1, data2, overlap, sub_dim,
+  start_pt, end_pt, fig_name
+):
+
+  path_length = 100
+  mid_pt = overlap[0]
+  t = jnp.linspace(0, 1, path_length)
+
+  start_pt_coord = encoders[0].apply.forward(params[0]["encoder"], start_pt)
+  mid_pt_coord = encoders[0].apply.forward(params[0]["encoder"], mid_pt)
+  path1_coord = start_pt_coord + t[:, None] * (mid_pt_coord - start_pt_coord)
+  path1_coord = path1_coord.at[:, sub_dim:].set(0)
+  path1 = decoders[0].apply.forward(params[0]["decoder"], path1_coord)
+
+  mid_pt_coord = encoders[1].apply.forward(params[1]["encoder"], mid_pt)
+  end_pt_coord = encoders[1].apply.forward(params[1]["encoder"], end_pt)
+  path2_coord = mid_pt_coord + t[:, None] * (end_pt_coord - mid_pt_coord)
+  path2_coord = path2_coord.at[:, sub_dim:].set(0)
+  path2 = decoders[1].apply.forward(params[1]["decoder"], path2_coord)
+  path = jnp.concatenate([path1, path2], axis=0)
+
+  fig = plt.figure(figsize=(6, 6))
+  ax = fig.add_subplot(111, projection='3d')
+  ax.scatter(data1[..., 0], data1[..., 1], data1[..., 2], s=1, c='red')
+  ax.scatter(data2[..., 0], data2[..., 1], data2[..., 2], s=1, c='blue')
+  ax.scatter(path[..., 0], path[..., 1], path[..., 2], s=1, c='black')
+  ax.scatter(start_pt[0], start_pt[1], start_pt[2], s=30, c='yellow')
+  ax.scatter(mid_pt[0], mid_pt[1], mid_pt[2], s=30, c='yellow')
+  ax.scatter(end_pt[0], end_pt[1], end_pt[2], s=30, c='yellow')
+  ax.view_init(elev=10, azim=45)
+  plt.savefig(f"results/fig/{fig_name}", dpi=500)
 
 
 ###############################################################################
@@ -588,3 +643,21 @@ def plot_1d_map(
     i += 1
   plt.savefig("results/fig/mapping_1d.pdf")
   plt.show()
+
+
+def sympy_to_latex(expr_str):
+    # / to \frac
+    expr_str = re.sub(r'\(([^/]+)\)/([^/+*-]+)', r'\\frac{\1}{\2}', expr_str)
+    # ** to ^
+    expr_str = re.sub(r'(\w+)\*\*(\w+)', r'\1^{\2}', expr_str)
+    # math symbol
+    replacements = {
+        r'\bdelta\b': r'\\delta',
+        r'\blog\b': r'\\log',
+        r'\*': '',
+    }
+    
+    for pattern, repl in replacements.items():
+        expr_str = re.sub(pattern, repl, expr_str)
+    
+    return f"$$\n{expr_str}\n$$"
