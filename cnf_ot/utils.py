@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 import matplotlib.colors as mcolors
 import numpy as np
+import re
 from matplotlib import cm
 from matplotlib import pyplot as plt
 
@@ -53,7 +54,7 @@ def plot_dim_reduction_reconst(
     )
     ax.set_title("reconstructed")
   fig.tight_layout()
-  plt.savefig("results/fig/dr.pdf")
+  plt.savefig("results/fig/dr.png")
   plt.clf()
 
 
@@ -606,3 +607,21 @@ def plot_1d_map(
     i += 1
   plt.savefig("results/fig/mapping_1d.pdf")
   plt.show()
+
+
+def sympy_to_latex(expr_str):
+    # / to \frac
+    expr_str = re.sub(r'\(([^/]+)\)/([^/+*-]+)', r'\\frac{\1}{\2}', expr_str)
+    # ** to ^
+    expr_str = re.sub(r'(\w+)\*\*(\w+)', r'\1^{\2}', expr_str)
+    # math symbol
+    replacements = {
+        r'\bdelta\b': r'\\delta',
+        r'\blog\b': r'\\log',
+        r'\*': '',
+    }
+    
+    for pattern, repl in replacements.items():
+        expr_str = re.sub(pattern, repl, expr_str)
+    
+    return f"$$\n{expr_str}\n$$"
