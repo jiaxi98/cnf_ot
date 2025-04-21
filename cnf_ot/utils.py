@@ -43,6 +43,7 @@ def plot_dim_reduction_reconst(
       samples[..., 0], samples[..., 1], samples[..., 2], s=1, c=samples[..., 0]
     )
     ax.set_title("original")
+    ax.view_init(elev=40, azim=45)
     ax = fig.add_subplot(132, projection='3d')
     ax.scatter(
       transf[..., 0], transf[..., 1], transf[..., 2], s=1, c=samples[..., 0]
@@ -53,6 +54,7 @@ def plot_dim_reduction_reconst(
       reconst[..., 0], reconst[..., 1], reconst[..., 2], s=1, c=samples[..., 0]
     )
     ax.set_title("reconstructed")
+    ax.view_init(elev=40, azim=45)
   fig.tight_layout()
   plt.savefig("results/fig/dr.png")
   plt.clf()
@@ -71,7 +73,7 @@ def plot_samples_snapshot(
     samples[..., 1],
     s=1,
   )
-  plt.savefig("results/fig/samples.pdf")
+  plt.savefig("results/fig/samples.png")
   plt.clf()
 
 
@@ -90,8 +92,42 @@ def plot_density_snapshot(
   plt.imshow(jnp.exp(log_prob.reshape(100, 100)))
   plt.axis("off")
 
-  plt.savefig("results/fig/density.pdf")
+  plt.savefig("results/fig/density.png")
   plt.clf()
+
+
+def find_mfd_path(
+  encoders, decoders, params, data1, data2, overlap, sub_dim,
+  start_pt, end_pt, fig_name
+):
+
+  path_length = 100
+  mid_pt = overlap[0]
+  t = jnp.linspace(0, 1, path_length)
+
+  start_pt_coord = encoders[0].apply.forward(params[0]["encoder"], start_pt)
+  mid_pt_coord = encoders[0].apply.forward(params[0]["encoder"], mid_pt)
+  path1_coord = start_pt_coord + t[:, None] * (mid_pt_coord - start_pt_coord)
+  path1_coord = path1_coord.at[:, sub_dim:].set(0)
+  path1 = decoders[0].apply.forward(params[0]["decoder"], path1_coord)
+
+  mid_pt_coord = encoders[1].apply.forward(params[1]["encoder"], mid_pt)
+  end_pt_coord = encoders[1].apply.forward(params[1]["encoder"], end_pt)
+  path2_coord = mid_pt_coord + t[:, None] * (end_pt_coord - mid_pt_coord)
+  path2_coord = path2_coord.at[:, sub_dim:].set(0)
+  path2 = decoders[1].apply.forward(params[1]["decoder"], path2_coord)
+  path = jnp.concatenate([path1, path2], axis=0)
+
+  fig = plt.figure(figsize=(6, 6))
+  ax = fig.add_subplot(111, projection='3d')
+  ax.scatter(data1[..., 0], data1[..., 1], data1[..., 2], s=1, c='red')
+  ax.scatter(data2[..., 0], data2[..., 1], data2[..., 2], s=1, c='blue')
+  ax.scatter(path[..., 0], path[..., 1], path[..., 2], s=1, c='black')
+  ax.scatter(start_pt[0], start_pt[1], start_pt[2], s=30, c='yellow')
+  ax.scatter(mid_pt[0], mid_pt[1], mid_pt[2], s=30, c='yellow')
+  ax.scatter(end_pt[0], end_pt[1], end_pt[2], s=30, c='yellow')
+  ax.view_init(elev=10, azim=45)
+  plt.savefig(f"results/fig/{fig_name}", dpi=500)
 
 
 ###############################################################################

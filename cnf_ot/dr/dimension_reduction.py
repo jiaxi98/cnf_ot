@@ -12,7 +12,7 @@ from cnf_ot.dr.trainers import train
 def main(config_dict: ml_collections.ConfigDict):
 
   def generate_low_dim_data(
-    key: PRNGKey, dim: int, type_: str, batch_size: int
+    key: PRNGKey, dim: int, type_: str, batch_size: int, rotate: bool = True
   ):
     if type_[0] == "S":
       # sphere type
@@ -21,6 +21,9 @@ def main(config_dict: ml_collections.ConfigDict):
         random.normal(key, (batch_size, sub_dim + 1))
       )
       samples /= jnp.sqrt(jnp.sum(samples**2, axis=-1))[:, None]
+      start = jnp.array([0.0, 0.0, 1.0])
+      end = jnp.array([0.0, 0.0, -1.0])
+      r = 1.5
     elif type_[0] == "T":
       if sub_dim != 2:
         raise ValueError("Only 2D torus is supported")
@@ -37,9 +40,16 @@ def main(config_dict: ml_collections.ConfigDict):
           ]
         ).T
       )
-    orthog_trans = random.normal(key, (dim, dim))
-    orthog_trans, _ = jnp.linalg.qr(orthog_trans)
-    return samples @ orthog_trans
+      start = jnp.array([6.0, 0.0, 0.0])
+      end = jnp.array([-6.0, 0.0, 0.0])
+      r = 9
+    if rotate:
+      orthog_trans = random.normal(key, (dim, dim))
+      orthog_trans, _ = jnp.linalg.qr(orthog_trans)
+      samples = samples @ orthog_trans
+      start = start @ orthog_trans
+      end = end @ orthog_trans
+    return samples, start, end, r
 
   config = Box(config_dict)
   dim = config.dim
@@ -49,20 +59,30 @@ def main(config_dict: ml_collections.ConfigDict):
   batch_size = config.train.batch_size
   sub_dim = int(config.type[1])
   
-  data = generate_low_dim_data(rng, dim, config.type, batch_size)
-  breakpoint()
+  data, start, end, r = generate_low_dim_data(rng, dim, config.type, batch_size)
+  data1 = data[jnp.linalg.norm(data - start[None], axis=-1) < r]
+  data2 = data[jnp.linalg.norm(data - end[None], axis=-1) < r]
+  overlap = data2[jnp.linalg.norm(data2 - start[None], axis=-1) < r]
+  print(f"data: {data.shape[0]}; data1: {data1.shape[0]};\
+    data2: {data2.shape[0]}; overlap: {overlap.shape[0]}")
 
   if model == "enc_dec":
-    encoder, decoder, params = train(
-      rng, data, dim, sub_dim, model, epochs, config
+    encoder1, decoder1, params1 = train(
+      rng, data1, dim, sub_dim, model, epochs, config
     )
-    encoder_forward_fn = jax.jit(encoder.apply.forward)
+    encoder2, decoder2, params2 = train(
+      rng, data2, dim, sub_dim, model, epochs, config
+    )
+    encoders = [encoder1, encoder2]
+    decoders = [decoder1, decoder2]
+    params = [params1, params2]
+    encoder_forward_fn = jax.jit(encoder1.apply.forward)
   elif model == "dec_only":
     decoder, params = train(
       rng, data, dim, sub_dim, model, epochs, config
     )
-  decoder_forward_fn = jax.jit(decoder.apply.forward)
-  decoder_inverse_fn = jax.jit(decoder.apply.inverse)
+  decoder_forward_fn = jax.jit(decoder1.apply.forward)
+  decoder_inverse_fn = jax.jit(decoder1.apply.inverse)
 
   # this color is only for visualizing ordered samples, e.g. unit circle
   if dim <= 3:
@@ -74,8 +94,8 @@ def main(config_dict: ml_collections.ConfigDict):
       utils.plot_dim_reduction_reconst(
         encoder_forward_fn,
         decoder_forward_fn,
-        params["encoder"],
-        params["decoder"],
+        params1["encoder"],
+        params1["decoder"],
         dim,
         sub_dim,
         data,
@@ -91,6 +111,10 @@ def main(config_dict: ml_collections.ConfigDict):
         data,
       )
   # samples_ = encoder_forward_fn(params["encoder"], samples)
+  utils.find_mfd_path(
+    encoders, decoders, params, data1, data2, overlap, sub_dim,
+    start, end, "S2_path.png"
+  )
   breakpoint()
 
 
