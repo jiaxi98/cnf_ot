@@ -31,8 +31,10 @@ def main(config_dict: ml_collections.ConfigDict):
         random.normal(key, (batch_size, sub_dim + 1))
       )
       samples /= jnp.sqrt(jnp.sum(samples**2, axis=-1))[:, None]
-      start = jnp.array([0.0, 0.0, 1.0])
-      end = jnp.array([0.0, 0.0, -1.0])
+      start = jnp.zeros((dim,))
+      start = start.at[0].set(1)
+      end = jnp.zeros((dim,))
+      end = end.at[0].set(-1)
       r = 1.5
     elif type_[0] == "T":
       if sub_dim != 2:
@@ -41,7 +43,7 @@ def main(config_dict: ml_collections.ConfigDict):
       r = 1
       theta = random.uniform(key, (batch_size, 2), minval=0, maxval=2 * jnp.pi)
       samples = jnp.zeros((batch_size, dim))
-      samples = samples.at[:, :dim].set(
+      samples = samples.at[:, :3].set(
         jnp.vstack(
           [
             (R + r * jnp.cos(theta[:, 1])) * jnp.sin(theta[:, 0]),
@@ -50,8 +52,10 @@ def main(config_dict: ml_collections.ConfigDict):
           ]
         ).T
       )
-      start = jnp.array([6.0, 0.0, 0.0])
-      end = jnp.array([-6.0, 0.0, 0.0])
+      start = jnp.zeros((dim,))
+      start = start.at[0].set(R + r)
+      end = jnp.zeros((dim,))
+      end = end.at[0].set(-R - r)
       r = 8
     orthog_trans = jnp.eye(dim)
     if rotate:
