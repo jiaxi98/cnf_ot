@@ -5,9 +5,10 @@ import yaml
 from box import Box
 from jax import random
 
-from cnf_ot.types import PRNGKey
 import cnf_ot.utils as utils
 from cnf_ot.dr.trainers import dynamics_path_finder
+from cnf_ot.types import PRNGKey
+
 
 def main(config_dict: ml_collections.ConfigDict):
 
@@ -66,7 +67,7 @@ def main(config_dict: ml_collections.ConfigDict):
   rng = jax.random.PRNGKey(config.seed)
   batch_size = config.train.batch_size
   sub_dim = int(config.type[1])
-  
+
   data, start, end, _, orthog_trans = generate_low_dim_data(
     rng, dim, config.type, batch_size
   )
@@ -74,12 +75,10 @@ def main(config_dict: ml_collections.ConfigDict):
     config_dict, data, start, end
   )
   path = utils.find_long_mfd_path(
-    encoders, decoders, params, charts, pos, radius,
-    sub_dim, start, end, data, f"{config.type}_path.png"
+    encoders, decoders, params, charts, pos, radius, sub_dim, start, end, data,
+    f"{config.type}_path.png"
   )
-  acc = utils.check_path_accuracy(
-    path @ orthog_trans.T, config.type
-  )
+  acc = utils.check_path_accuracy(path @ orthog_trans.T, config.type)
   print(f"Accuracy: {acc:.4f}")
   breakpoint()
 

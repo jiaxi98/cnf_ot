@@ -15,15 +15,10 @@ from cnf_ot.types import OptState, PRNGKey
 
 
 def train(
-  rng: PRNGKey,
-  data: jnp.ndarray,
-  dim: int,
-  sub_dim: int,
-  model: str,
-  epochs: int,
-  config_dict: ml_collections.ConfigDict
+  rng: PRNGKey, data: jnp.ndarray, dim: int, sub_dim: int, model: str,
+  epochs: int, config_dict: ml_collections.ConfigDict
 ):
-  """Train a NF model to learn the coordinate transformation.
+  r"""Train a NF model to learn the coordinate transformation.
   
   The encoder and decoder are defined in the ambient space :math:`\mathbb{R}^n`
   and their mapping are
@@ -40,7 +35,7 @@ def train(
   reconstructed data, :math:`\theta` is the parameters of the model, and
   :math:`L(\theta)` is the loss function.
   """
-  
+
   config = Box(config_dict)
   decoder = RQSFlow(
     event_shape=(dim, ),
@@ -139,7 +134,8 @@ def train(
 
 
 def static_path_finder(
-  config_dict: ml_collections.ConfigDict, data: jnp.ndarray,
+  config_dict: ml_collections.ConfigDict,
+  data: jnp.ndarray,
 ):
 
   config = Box(config_dict)
@@ -152,8 +148,10 @@ def static_path_finder(
   data1 = data[jnp.linalg.norm(data - start[None], axis=-1) < r]
   data2 = data[jnp.linalg.norm(data - end[None], axis=-1) < r]
   overlap = data2[jnp.linalg.norm(data2 - start[None], axis=-1) < r]
-  print(f"data: {data.shape[0]}; data1: {data1.shape[0]};\
-    data2: {data2.shape[0]}; overlap: {overlap.shape[0]}")
+  print(
+    f"data: {data.shape[0]}; data1: {data1.shape[0]};\
+    data2: {data2.shape[0]}; overlap: {overlap.shape[0]}"
+  )
   if model == "enc_dec":
     encoder1, decoder1, params1, _ = train(
       rng, data1, dim, sub_dim, model, epochs, config
@@ -175,11 +173,15 @@ def static_path_finder(
     decoders = [decoder1, decoder2]
     params = [params1, params2]
     return decoders, params
-  
+
 
 def dynamics_path_finder(
-  config_dict: ml_collections.ConfigDict, data: jnp.ndarray,
-  start: jnp.ndarray, end: jnp.ndarray, init_r: float = 3, relax: float = 1.5
+  config_dict: ml_collections.ConfigDict,
+  data: jnp.ndarray,
+  start: jnp.ndarray,
+  end: jnp.ndarray,
+  init_r: float = 3,
+  relax: float = 1.5
 ):
   """Find a path between two points dynamically.
   
@@ -201,7 +203,7 @@ def dynamics_path_finder(
     decoders: list of decoders.
     params: list of parameters for encoders and decoders.
   """
-  
+
   config = Box(config_dict)
   dim = config.dim
   model = config.model
@@ -241,7 +243,9 @@ def dynamics_path_finder(
       break
     pos_ = chart[jnp.argmin(jnp.linalg.norm(chart - end, axis=-1))]
     index += 1
-    print(f"L2 dist between current pos and end: {jnp.linalg.norm(pos_-end):.3f}")
+    print(
+      f"L2 dist between current pos and end: {jnp.linalg.norm(pos_-end):.3f}"
+    )
   pos.append(end)
 
   return charts, pos, radius, encoders, decoders, params

@@ -1,3 +1,4 @@
+import re
 from functools import partial
 
 import haiku as hk
@@ -5,7 +6,6 @@ import jax
 import jax.numpy as jnp
 import matplotlib.colors as mcolors
 import numpy as np
-import re
 from matplotlib import cm
 from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
@@ -127,8 +127,8 @@ def plot_dimension_reduction():
 
 
 def find_mfd_path(
-  encoders, decoders, params, data1, data2, overlap, sub_dim,
-  start, end, fig_name
+  encoders, decoders, params, data1, data2, overlap, sub_dim, start, end,
+  fig_name
 ):
 
   path_length = 100
@@ -161,10 +161,10 @@ def find_mfd_path(
 
 
 def find_long_mfd_path(
-  encoders, decoders, params, charts, pos, radius,
-  sub_dim, start, end, data, fig_name
+  encoders, decoders, params, charts, pos, radius, sub_dim, start, end, data,
+  fig_name
 ):
-  
+
   path_length = 100
   x0 = start
   t = jnp.linspace(0, 1, path_length)
@@ -178,9 +178,8 @@ def find_long_mfd_path(
 
   for i in range(len(charts) - 1):
     center = pos[i + 1]
-    x1 = charts[i][
-      jnp.linalg.norm(charts[i] - center, axis=-1) < radius[i + 1]
-    ][0]
+    x1 = charts[i][jnp.linalg.norm(charts[i] - center, axis=-1) < radius[i +
+                                                                         1]][0]
     x0_coord = encoders[i].apply.forward(params[i]["encoder"], x0)
     x1_coord = encoders[i].apply.forward(params[i]["encoder"], x1)
     path_coord = x0_coord + t[:, None] * (x1_coord - x0_coord)
@@ -190,8 +189,11 @@ def find_long_mfd_path(
 
     ax.scatter(x1[0], x1[1], x1[2], s=30, c='yellow')
     ax.scatter(
-      charts[i][..., 0], charts[i][..., 1],
-      charts[i][..., 2], s=1, c=cmap(cluster_colors[i])
+      charts[i][..., 0],
+      charts[i][..., 1],
+      charts[i][..., 2],
+      s=1,
+      c=cmap(cluster_colors[i])
     )
     ax.scatter(path_[..., 0], path_[..., 1], path_[..., 2], s=1, c='black')
     x0 = x1
@@ -226,7 +228,7 @@ def check_path_accuracy(path, type_):
     R = 5
     r = 1
     tmp = jnp.sqrt(path[..., 0]**2 + path[..., 1]**2)
-    return  jnp.mean(jnp.abs((tmp - R)**2 + path[..., 2]**2 - r**2))
+    return jnp.mean(jnp.abs((tmp - R)**2 + path[..., 2]**2 - r**2))
 
 
 ###############################################################################
@@ -745,18 +747,18 @@ def plot_1d_map(
 
 
 def sympy_to_latex(expr_str):
-    # / to \frac
-    expr_str = re.sub(r'\(([^/]+)\)/([^/+*-]+)', r'\\frac{\1}{\2}', expr_str)
-    # ** to ^
-    expr_str = re.sub(r'(\w+)\*\*(\w+)', r'\1^{\2}', expr_str)
-    # math symbol
-    replacements = {
-        r'\bdelta\b': r'\\delta',
-        r'\blog\b': r'\\log',
-        r'\*': '',
-    }
-    
-    for pattern, repl in replacements.items():
-        expr_str = re.sub(pattern, repl, expr_str)
-    
-    return f"$$\n{expr_str}\n$$"
+  # / to \frac
+  expr_str = re.sub(r'\(([^/]+)\)/([^/+*-]+)', r'\\frac{\1}{\2}', expr_str)
+  # ** to ^
+  expr_str = re.sub(r'(\w+)\*\*(\w+)', r'\1^{\2}', expr_str)
+  # math symbol
+  replacements = {
+    r'\bdelta\b': r'\\delta',
+    r'\blog\b': r'\\log',
+    r'\*': '',
+  }
+
+  for pattern, repl in replacements.items():
+    expr_str = re.sub(pattern, repl, expr_str)
+
+  return f"$$\n{expr_str}\n$$"
