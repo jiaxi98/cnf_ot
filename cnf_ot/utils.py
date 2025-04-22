@@ -8,6 +8,7 @@ import numpy as np
 import re
 from matplotlib import cm
 from matplotlib import pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 
 from cnf_ot.types import PRNGKey
 
@@ -96,24 +97,53 @@ def plot_density_snapshot(
   plt.clf()
 
 
+def plot_dimension_reduction():
+  # this color is only for visualizing ordered samples, e.g. unit circle
+  assert dim <= 3
+  if config.type == "S1":
+    color = random.uniform(rng, (batch_size, ))
+    data = data.at[:, 0].set(jnp.sin(2 * jnp.pi * color))
+    data = data.at[:, 1].set(jnp.cos(2 * jnp.pi * color))
+  if model == "enc_dec":
+    utils.plot_dim_reduction_reconst(
+      encoder_forward_fn,
+      decoder_forward_fn,
+      params1["encoder"],
+      params1["decoder"],
+      dim,
+      sub_dim,
+      data,
+    )
+  elif model == "dec_only":
+    utils.plot_dim_reduction_reconst(
+      decoder_inverse_fn,
+      decoder_forward_fn,
+      params1,
+      params1,
+      dim,
+      sub_dim,
+      data,
+    )
+
+
 def find_mfd_path(
   encoders, decoders, params, data1, data2, overlap, sub_dim,
-  start_pt, end_pt, fig_name
+  start, end, fig_name
 ):
 
   path_length = 100
-  mid_pt = overlap[0]
+  mid = overlap[0]
   t = jnp.linspace(0, 1, path_length)
 
-  start_pt_coord = encoders[0].apply.forward(params[0]["encoder"], start_pt)
-  mid_pt_coord = encoders[0].apply.forward(params[0]["encoder"], mid_pt)
-  path1_coord = start_pt_coord + t[:, None] * (mid_pt_coord - start_pt_coord)
+  start_coord = encoders[0].apply.forward(params[0]["encoder"], start)
+  mid_coord = encoders[0].apply.forward(params[0]["encoder"], mid)
+  path1_coord = start_coord + t[:, None] * (mid_coord - start_coord)
   path1_coord = path1_coord.at[:, sub_dim:].set(0)
   path1 = decoders[0].apply.forward(params[0]["decoder"], path1_coord)
 
-  mid_pt_coord = encoders[1].apply.forward(params[1]["encoder"], mid_pt)
-  end_pt_coord = encoders[1].apply.forward(params[1]["encoder"], end_pt)
-  path2_coord = mid_pt_coord + t[:, None] * (end_pt_coord - mid_pt_coord)
+  mid_coord = encoders[1].apply.forward(params[1]["encoder"], mid)
+  end_coord = encoders[1].apply.forward(params[1]["encoder"], end)
+  path2_coord = mid_coord + t[:, None] * (end_coord - mid_coord)
   path2_coord = path2_coord.at[:, sub_dim:].set(0)
   path2 = decoders[1].apply.forward(params[1]["decoder"], path2_coord)
   path = jnp.concatenate([path1, path2], axis=0)
@@ -123,11 +153,80 @@ def find_mfd_path(
   ax.scatter(data1[..., 0], data1[..., 1], data1[..., 2], s=1, c='red')
   ax.scatter(data2[..., 0], data2[..., 1], data2[..., 2], s=1, c='blue')
   ax.scatter(path[..., 0], path[..., 1], path[..., 2], s=1, c='black')
-  ax.scatter(start_pt[0], start_pt[1], start_pt[2], s=30, c='yellow')
-  ax.scatter(mid_pt[0], mid_pt[1], mid_pt[2], s=30, c='yellow')
-  ax.scatter(end_pt[0], end_pt[1], end_pt[2], s=30, c='yellow')
+  ax.scatter(start[0], start[1], start[2], s=30, c='yellow')
+  ax.scatter(mid[0], mid[1], mid[2], s=30, c='yellow')
+  ax.scatter(end[0], end[1], end[2], s=30, c='yellow')
   ax.view_init(elev=10, azim=45)
   plt.savefig(f"results/fig/{fig_name}", dpi=500)
+
+
+def find_long_mfd_path(
+  encoders, decoders, params, charts, pos, radius,
+  sub_dim, start, end, data, fig_name
+):
+  
+  path_length = 100
+  x0 = start
+  t = jnp.linspace(0, 1, path_length)
+  path = start[None]
+
+  cluster_colors = np.linspace(0, 1, len(charts))
+  cmap = LinearSegmentedColormap.from_list('RedToBlue', ['red', 'blue'])
+  fig = plt.figure(figsize=(6, 6))
+  ax = fig.add_subplot(111, projection='3d')
+  ax.scatter(x0[0], x0[1], x0[2], s=10, c='yellow')
+
+  for i in range(len(charts) - 1):
+    center = pos[i + 1]
+    x1 = charts[i][
+      jnp.linalg.norm(charts[i] - center, axis=-1) < radius[i + 1]
+    ][0]
+    x0_coord = encoders[i].apply.forward(params[i]["encoder"], x0)
+    x1_coord = encoders[i].apply.forward(params[i]["encoder"], x1)
+    path_coord = x0_coord + t[:, None] * (x1_coord - x0_coord)
+    path_coord = path_coord.at[:, sub_dim:].set(0)
+    path_ = decoders[i].apply.forward(params[i]["decoder"], path_coord)
+    path = jnp.concatenate([path, path_], axis=0)
+
+    ax.scatter(x1[0], x1[1], x1[2], s=30, c='yellow')
+    ax.scatter(
+      charts[i][..., 0], charts[i][..., 1],
+      charts[i][..., 2], s=1, c=cmap(cluster_colors[i])
+    )
+    ax.scatter(path_[..., 0], path_[..., 1], path_[..., 2], s=1, c='black')
+    x0 = x1
+
+  i = -1
+  x1 = end
+  x0_coord = encoders[i].apply.forward(params[i]["encoder"], x0)
+  x1_coord = encoders[i].apply.forward(params[i]["encoder"], x1)
+  path_coord = x0_coord + t[:, None] * (x1_coord - x0_coord)
+  path_coord = path_coord.at[:, sub_dim:].set(0)
+  path_ = decoders[i].apply.forward(params[i]["decoder"], path_coord)
+  path = jnp.concatenate([path, path_], axis=0)
+
+  ax.scatter(x1[0], x1[1], x1[2], s=30, c='yellow')
+  ax.scatter(
+    charts[i][..., 0], charts[i][..., 1], charts[i][..., 2], s=1, c="blue"
+  )
+  ax.scatter(path_[..., 0], path_[..., 1], path_[..., 2], s=1, c='black')
+  ax.scatter(data[..., 0], data[..., 1], data[..., 2], s=1, c='red', alpha=0.1)
+  ax.view_init(elev=10, azim=45)
+  plt.savefig(f"results/fig/{fig_name}", dpi=500)
+
+  return path
+
+
+def check_path_accuracy(path, type_):
+  """check the accuracy of the path."""
+
+  if type_[0] == "S":
+    return jnp.mean(jnp.abs(jnp.sum(path**2, axis=-1) - 1))
+  elif type_[0] == "T":
+    R = 5
+    r = 1
+    tmp = jnp.sqrt(path[..., 0]**2 + path[..., 1]**2)
+    return  jnp.mean(jnp.abs((tmp - R)**2 + path[..., 2]**2 - r**2))
 
 
 ###############################################################################
