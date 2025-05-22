@@ -181,7 +181,8 @@ def dynamics_path_finder(
   start: jnp.ndarray,
   end: jnp.ndarray,
   init_r: float = 3,
-  relax: float = 1.5
+  relax: float = 1.2,
+  threshold: float = 1e-2,
 ):
   """Find a path between two points dynamically.
   
@@ -225,10 +226,14 @@ def dynamics_path_finder(
     r = init_r
     while True:
       chart = data[jnp.linalg.norm(data - pos_, axis=-1) < r]
+      if chart.shape[0] < 10:
+        print(f"Chart {index} has too few points, increasing radius...")
+        r *= relax
+        breakpoint()
       encoder, decoder, params_, loss = train(
         rng, chart, dim, sub_dim, model, epochs, config
       )
-      if loss[-1] < 1e-1:
+      if loss[-1] < threshold:
         break
       r /= relax
     charts.append(chart)

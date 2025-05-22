@@ -1,4 +1,5 @@
 import jax
+jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp
 import ml_collections
 import yaml
@@ -37,26 +38,39 @@ def main(config_dict: ml_collections.ConfigDict):
       end = end.at[0].set(-1)
       r = 1.5
     elif type_[0] == "T":
-      if sub_dim != 2:
-        raise ValueError("Only 2D torus is supported")
-      R = 5
-      r = 1
-      theta = random.uniform(key, (batch_size, 2), minval=0, maxval=2 * jnp.pi)
-      samples = jnp.zeros((batch_size, dim))
-      samples = samples.at[:, :3].set(
-        jnp.vstack(
-          [
-            (R + r * jnp.cos(theta[:, 1])) * jnp.sin(theta[:, 0]),
-            (R + r * jnp.cos(theta[:, 1])) * jnp.cos(theta[:, 0]),
-            r * jnp.sin(theta[:, 1]),
-          ]
-        ).T
-      )
-      start = jnp.zeros((dim,))
-      start = start.at[0].set(R + r)
-      end = jnp.zeros((dim,))
-      end = end.at[0].set(-R - r)
-      r = 8
+      if sub_dim == 2:
+        R = 5
+        r = 1
+        theta = random.uniform(key, (batch_size, 2), minval=0, maxval=2 * jnp.pi)
+        samples = jnp.zeros((batch_size, dim))
+        samples = samples.at[:, :3].set(
+          jnp.vstack(
+            [
+              (R + r * jnp.cos(theta[:, 1])) * jnp.sin(theta[:, 0]),
+              (R + r * jnp.cos(theta[:, 1])) * jnp.cos(theta[:, 0]),
+              r * jnp.sin(theta[:, 1]),
+            ]
+          ).T
+        )
+        start = jnp.zeros((dim,))
+        start = start.at[0].set(R + r)
+        end = jnp.zeros((dim,))
+        end = end.at[0].set(-R - r)
+        r = 8
+      else:
+        if dim < 2 * sub_dim:
+          raise ValueError(
+            f"dim {dim} must be greater than 2 * sub_dim {sub_dim}"
+          )
+        r = 1
+        theta = random.uniform(key, (batch_size, sub_dim), minval=0, maxval=2 * jnp.pi)
+        samples = jnp.zeros((batch_size, dim))
+        samples = samples.at[:, :sub_dim].set(r * jnp.cos(theta))
+        samples = samples.at[:, sub_dim:2 * sub_dim].set(r * jnp.sin(theta))
+        start = jnp.zeros((dim,))
+        start = start.at[:sub_dim].set(r)
+        end = jnp.zeros((dim,))
+        end = end.at[:sub_dim].set(-r)
     orthog_trans = jnp.eye(dim)
     if rotate:
       orthog_trans = random.normal(key, (dim, dim))
@@ -70,7 +84,7 @@ def main(config_dict: ml_collections.ConfigDict):
   dim = config.dim
   rng = jax.random.PRNGKey(config.seed)
   batch_size = config.train.batch_size
-  sub_dim = int(config.type[1])
+  sub_dim = int(config.type[1:])
 
   data, start, end, _, orthog_trans = generate_low_dim_data(
     rng, dim, config.type, batch_size
@@ -82,7 +96,7 @@ def main(config_dict: ml_collections.ConfigDict):
     encoders, decoders, params, charts, pos, radius, sub_dim, start, end, data,
     f"{config.type}_path.png"
   )
-  acc = utils.check_path_accuracy(path @ orthog_trans.T, config.type)
+  acc = utils.check_path_accuracy(path @ orthog_trans.T, config.type, sub_dim)
   print(f"Accuracy: {acc:.4f}")
   breakpoint()
 

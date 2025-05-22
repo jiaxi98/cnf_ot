@@ -219,17 +219,27 @@ def find_long_mfd_path(
   return path
 
 
-def check_path_accuracy(path, type_):
+def check_path_accuracy(path, type_, sub_dim):
   """check the accuracy of the path."""
 
   if type_[0] == "S":
     return jnp.mean(jnp.abs(jnp.sum(path**2, axis=-1) - 1))
   elif type_[0] == "T":
-    R = 5
-    r = 1
-    tmp = jnp.sqrt(path[..., 0]**2 + path[..., 1]**2)
-    return jnp.mean(jnp.abs((tmp - R)**2 + path[..., 2]**2 - r**2 +
-      jnp.sum(path[..., 3:]**2, axis=-1)))
+    if sub_dim == 2:
+      R = 5
+      r = 1
+      tmp = jnp.sqrt(path[..., 0]**2 + path[..., 1]**2)
+      return jnp.mean(jnp.abs((tmp - R)**2 + path[..., 2]**2 - r**2 +
+        jnp.sum(path[..., 3:]**2, axis=-1)))
+    else:
+      return jnp.mean(jnp.sum(path[:, sub_dim * 2:]**2, axis=-1) +
+        jnp.sum(
+          jnp.abs(
+            (path[:, :sub_dim * 2]**2).reshape(-1, sub_dim, 2).sum(axis=-1) - 1
+          ),
+          axis=-1
+        )
+      )
 
 
 ###############################################################################
