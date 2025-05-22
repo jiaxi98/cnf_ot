@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import ml_collections
 import optax
 from box import Box
+from flax import traverse_util
 from jaxtyping import Array
 from matplotlib import pyplot as plt
 from tqdm import tqdm
@@ -77,6 +78,13 @@ def train(
   )
   optimizer = optax.adam(schedule)
   opt_state = optimizer.init(params)
+  flat_params = traverse_util.flatten_dict(params)
+  for _, value in flat_params.items():
+    if '~' not in _ and value.dtype != jnp.float64:
+      breakpoint()
+      raise Exception(
+        f"Parameter {value} is not in float64, please check the model"
+      )
 
   if model == "enc_dec":
 
