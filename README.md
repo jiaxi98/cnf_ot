@@ -59,3 +59,14 @@ $T$ is the simulation time, $\sigma$ is the diffusion strength, and $a$ is
 the drift coefficient. Two types of drift vector fields are supported, e.g.
 gradient velocity field with drift coefficient $a$ and non-gradient vector
 field.
+
+## Citation
+If you find this codebase useful for your research, please consider citing:
+```bibtex
+@article{zhao2025variational,
+  title={Variational conditional normalizing flows for computing second-order mean field control problems},
+  author={Zhao, Jiaxi and Zhou, Mo and Zuo, Xinzhe and Li, Wuchen},
+  journal={arXiv preprint arXiv:2503.19580},
+  year={2025}
+}
+```
