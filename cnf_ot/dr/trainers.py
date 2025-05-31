@@ -121,8 +121,8 @@ def train(
 
   loss_hist = []
   iters = tqdm(range(epochs))
-  # param_count = sum(x.size for x in jax.tree.leaves(params))
-  # print("Network parameters: {}".format(param_count))
+  param_count = sum(x.size for x in jax.tree.leaves(params))
+  print("Network parameters: {}".format(param_count))
   for _ in iters:
     # samples = generate_low_dim_data(key, dim, config.type, batch_size)
     loss, params, opt_state = update(params, opt_state)
@@ -188,6 +188,9 @@ def dynamics_path_finder(
   data: jnp.ndarray,
   start: jnp.ndarray,
   end: jnp.ndarray,
+  dim: int,
+  sub_dim: int,
+  rng: PRNGKey,
   init_r: float = 3,
   relax: float = 1.2,
   threshold: float = 1e-2,
@@ -214,11 +217,8 @@ def dynamics_path_finder(
   """
 
   config = Box(config_dict)
-  dim = config.dim
   model = config.model
-  rng = jax.random.PRNGKey(config.seed)
   epochs = config.train.epochs
-  sub_dim = int(config.type[1])
 
   charts = []
   pos = []
@@ -238,6 +238,7 @@ def dynamics_path_finder(
         print(f"Chart {index} has too few points, increasing radius...")
         r *= relax
         breakpoint()
+      breakpoint()
       encoder, decoder, params_, loss = train(
         rng, chart, dim, sub_dim, model, epochs, config
       )

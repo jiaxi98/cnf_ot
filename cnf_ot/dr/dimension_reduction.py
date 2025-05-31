@@ -81,16 +81,26 @@ def main(config_dict: ml_collections.ConfigDict):
     return samples, start, end, r, orthog_trans
 
   config = Box(config_dict)
-  dim = config.dim
   rng = jax.random.PRNGKey(config.seed)
   batch_size = config.train.batch_size
-  sub_dim = int(config.type[1:])
 
-  data, start, end, _, orthog_trans = generate_low_dim_data(
-    rng, dim, config.type, batch_size
-  )
+  if config.type[0] == "S" or config.type[0] == "T":
+    dim = config.dim
+    sub_dim = int(config.type[1:])
+    data, start, end, _, orthog_trans = generate_low_dim_data(
+      rng, dim, config.type, batch_size
+    )
+    init_r = 3
+  else:
+    data = jnp.load("data/traj_data.npy").reshape(-1, 22 * 3)
+    dim = 66
+    sub_dim = 10
+    start = data[0, :]
+    end = data[805, :]
+    orthog_trans = jnp.eye(dim)
+    init_r = 0.5
   charts, pos, radius, encoders, decoders, params = dynamics_path_finder(
-    config_dict, data, start, end
+    config_dict, data, start, end, dim, sub_dim, rng, init_r
   )
   path = utils.find_long_mfd_path(
     encoders, decoders, params, charts, pos, radius, sub_dim, start, end, data,

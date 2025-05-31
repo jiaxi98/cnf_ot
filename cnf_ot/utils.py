@@ -240,6 +240,69 @@ def check_path_accuracy(path, type_, sub_dim):
           axis=-1
         )
       )
+    
+
+def calculate_dihedral(positions, index):
+  i1, i2, i3, i4 = index
+  A = positions[:, i1, :]
+  B = positions[:, i2, :]
+  C = positions[:, i3, :]
+  D = positions[:, i4, :]
+
+  BA = B - A
+  CB = C - B
+  DC = D - C
+
+  n1 = np.cross(BA, CB)
+  n2 = np.cross(CB, DC)
+
+  theta = np.arctan2(np.sum(np.cross(n1, n2) * CB, axis=1, keepdims=True) / np.linalg.norm(CB, axis=1, keepdims=True),\
+                      np.sum(n1 * n2, axis=1, keepdims=True))
+  theta = np.degrees(theta)
+
+  return theta
+
+
+def draw_plot_numpy(positions):
+  phi = calculate_dihedral(positions=positions.reshape(-1, 22, 3), index=[0, 16, 14, 12])
+  psi = calculate_dihedral(positions=positions.reshape(-1, 22, 3), index=[2, 0, 16, 14])
+  angles = np.concatenate((phi, psi), axis=1)
+
+  fig, ax = plt.subplots(1, 1, figsize=(6, 5), constrained_layout=True)
+
+  xx = np.linspace(-170, 170, 35)
+  yy = np.linspace(-170, 170, 35)
+  XX, YY = np.meshgrid(xx, yy)
+  x_list = np.concatenate([XX[:,:,None], YY[:,:,None]], axis=-1).reshape(-1, 2)
+
+  V = np.load('data/potential_charmm_500.npy')
+  V = V.astype(float)
+  # V = np.minimum(V - V.min(), 13)
+  V = V - V.min()
+
+  ax.scatter(angles[:, 0], angles[:, 1], s=2)
+  # ax.plot(angles[:, 0], angles[:, 1], 'ko', markersize=3)
+
+  ax.contour(XX, YY, V.T, 20, linewidths=.5, alpha=1); 
+  ax.set_xlabel(r'$\phi$',fontsize=18)
+  ax.set_ylabel(r'$\psi$', fontsize=18, rotation=1)
+  ax.tick_params(axis="both", labelsize=10) 
+
+  for fn in [ax.set_xticks, ax.set_yticks]:
+    fn([-150, -100, -50, 0, 50, 100, 150],
+      (r'$-150^{\circ}$', r'$-100^{\circ}$', r'$-50^{\circ}$',
+      r'$0^{\circ}$', r'$50^{\circ}$', r'$100^{\circ}$', r'$150^{\circ}$') )
+
+  # find the start and end point
+  # condition1 = (angles[:, 0] >= 70) & (angles[:, 0] <= 80)
+  # condition2 = (angles[:, 1] <= -60) & (angles[:, 1] >= -70)
+  # combined_condition = condition1 & condition2
+  # matching_indices = np.where(combined_condition)[0]
+  # index = 0
+  # ax.plot(angles[index, 0], angles[index, 1], 'ko')
+  # print(angles[index, 0], angles[index, 1])
+  plt.savefig("results/fig/dr.png")
+  plt.clf()
 
 
 ###############################################################################
