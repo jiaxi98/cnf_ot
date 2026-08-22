@@ -131,3 +131,45 @@ is the square root of the exact-density-weighted mean squared error divided by
 the corresponding weighted squared norm of the analytic field. A second
 evaluation with 262,144 samples and an independent random seed changed the
 reported errors by at most `4.9e-4`.
+
+## Two-dimensional density-coupled RWPO
+
+This experiment augments the paper's quadratic RWPO running cost with
+
+```text
+kappa * (0.5 * p(x, t) - p_star(x, t)),  kappa = 10,
+```
+
+where `p_star` is the analytic RWPO density. After integration against `p`,
+the added functional is `kappa / 2 * ||p - p_star||^2` up to a constant, so
+the analytic RWPO solution remains the exact minimizer. The run uses the same
+1,200-parameter architecture and `T=2`, `beta=1`, `lambda=200`, `N_t=20`,
+`N_k=64`, and `N_b=2048` settings as the corresponding paper experiment.
+
+```bash
+env PYTHONPATH=. XLA_PYTHON_CLIENT_PREALLOCATE=false \
+  .venv/bin/python benchmarks/train_eval_density_rwpo.py \
+  --epochs 30000 --time-batch-size 20 \
+  --boundary-batch-size 2048 --interior-batch-size 64 \
+  --eval-batch-size 131072 --objective-batch-size 8192 \
+  --objective-time-points 100 --lambda 200 --kappa 10 --seed 42 \
+  --output \
+    benchmark_results/density_rwpo_d2_nt20_kappa10_lambda200_accuracy.json \
+  --checkpoint \
+    benchmark_results/density_rwpo_d2_nt20_kappa10_lambda200_params.pkl
+```
+
+The raw modified objective is 4.0584 versus the exact 3.9787, a relative error
+of 2.00%. The initial-condition KL residual is `2.23e-3`. Relative spatial L2
+density errors are:
+
+| Time | Relative density L2 |
+|---:|---:|
+| 0.50 | 0.05735 |
+| 1.00 | 0.05692 |
+| 1.50 | 0.05959 |
+| 2.00 | 0.03667 |
+
+The JSON file also records exploratory score and velocity diagnostics. Those
+derivative metrics are not used in the reviewer response for this experiment;
+the separate OU benchmark above is the controlled component-wise validation.

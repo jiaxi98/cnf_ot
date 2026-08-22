@@ -1,0 +1,86 @@
+{
+  "problem": "two-dimensional density-coupled quadratic RWPO",
+  "architecture": {
+    "autoregressive_layers": 2,
+    "conditioner_hidden_sizes": [
+      16,
+      16
+    ],
+    "spline_bins": 5,
+    "parameters": 1200
+  },
+  "training": {
+    "epochs": 30000,
+    "learning_rate": 0.001,
+    "penalty": 200.0,
+    "density_coupling": 10.0,
+    "time_batch_size": 20,
+    "boundary_batch_size": 2048,
+    "interior_batch_size": 64,
+    "seed": 42,
+    "final_stochastic_loss": 4.568955119179279,
+    "seconds": 410.55923758300196
+  },
+  "equation": {
+    "horizon": 2.0,
+    "inverse_diffusion_coefficient": 1.0,
+    "initial_variance": 6.0,
+    "terminal_potential": "0.5 * ||x||^2",
+    "running_density_term": "kappa * (0.5 * p - p_star)"
+  },
+  "evaluation": {
+    "batch_size_per_time": 131072,
+    "objective_batch_size": 8192,
+    "objective_time_points": 100,
+    "space_finite_difference_step": 0.01,
+    "time_finite_difference_step": 0.01,
+    "sampling_distribution_for_component_errors": "exact RWPO density at each reported time",
+    "component_errors": [
+      {
+        "time": 0.5,
+        "relative_l2_density_error": 0.05734976061708709,
+        "relative_score_rmse": 1.8741852915017823,
+        "relative_current_velocity_rmse": 0.3729536897744053,
+        "relative_fp_drift_rmse": 0.9482185674693581
+      },
+      {
+        "time": 1.0,
+        "relative_l2_density_error": 0.05691641856834709,
+        "relative_score_rmse": 0.1457780722603236,
+        "relative_current_velocity_rmse": 0.305090839393039,
+        "relative_fp_drift_rmse": 0.1767008561802623
+      },
+      {
+        "time": 1.5,
+        "relative_l2_density_error": 0.0595863591787462,
+        "relative_score_rmse": 0.16602963082574185,
+        "relative_current_velocity_rmse": 0.23910173123771616,
+        "relative_fp_drift_rmse": 0.14083646508672465
+      },
+      {
+        "time": 2.0,
+        "relative_l2_density_error": 0.03666621850809394,
+        "relative_score_rmse": 0.15031776256602825,
+        "relative_current_velocity_rmse": 0.38827410184650657,
+        "relative_fp_drift_rmse": 0.22142920955036652
+      }
+    ],
+    "objective": {
+      "kinetic": 2.175222920569685,
+      "density_coupling": -0.21786629250097478,
+      "terminal_potential": 2.1010413137264745,
+      "boundary_kl": 0.002234622119616117,
+      "raw_objective": 4.058397941795185,
+      "exact_raw_objective": 3.9786626069824327,
+      "raw_objective_relative_error": 0.02004073797884229,
+      "additive_shift": 0.2185619703537874,
+      "shifted_objective": 4.276959912148973,
+      "exact_shifted_objective": 4.19722457733622,
+      "shifted_objective_relative_error": 0.01899715713171517
+    }
+  },
+  "jax": "0.10.2",
+  "devices": [
+    "cpu:0"
+  ]
+}
