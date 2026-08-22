@@ -1,0 +1,32 @@
+{
+  "problem": "rwpo",
+  "dimension": 2,
+  "parameters": 1200,
+  "batch_size": 2048,
+  "interior_batch_size": 64,
+  "time_batch_size": 1,
+  "preallocation": "false",
+  "platform": "macOS-26.5.1-arm64-arm-64bit",
+  "jax": "0.10.2",
+  "devices": [
+    "cpu:0"
+  ],
+  "warmup_loss": 727.1028646924932,
+  "measured_loss": 703.8291114556494,
+  "memory_bytes": {
+    "rss_after_init": 480313344,
+    "rss_after_warmup": 1496203264,
+    "peak_rss_during_measured_step": 1496399872,
+    "increment_over_warmup_rss": 196608,
+    "process_max_rss_including_compilation": 1523187712
+  },
+  "xla_executable_memory_bytes": {
+    "generated_code_size_in_bytes": 0,
+    "argument_size_in_bytes": 28620,
+    "output_size_in_bytes": 28948,
+    "alias_size_in_bytes": 0,
+    "temp_size_in_bytes": 11822144,
+    "host_argument_size_in_bytes": 0,
+    "host_output_size_in_bytes": 0
+  }
+}

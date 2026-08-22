@@ -1,0 +1,32 @@
+{
+  "problem": "ot",
+  "dimension": 20,
+  "parameters": 27984,
+  "batch_size": 2048,
+  "interior_batch_size": 64,
+  "time_batch_size": 1,
+  "preallocation": "false",
+  "platform": "macOS-26.5.1-arm64-arm-64bit",
+  "jax": "0.10.2",
+  "devices": [
+    "cpu:0"
+  ],
+  "warmup_loss": 1183973.7477224497,
+  "measured_loss": 1183704.7699946733,
+  "memory_bytes": {
+    "rss_after_init": 860176384,
+    "rss_after_warmup": 5267505152,
+    "peak_rss_during_measured_step": 5267554304,
+    "increment_over_warmup_rss": 49152,
+    "process_max_rss_including_compilation": 5519245312
+  },
+  "xla_executable_memory_bytes": {
+    "generated_code_size_in_bytes": 0,
+    "argument_size_in_bytes": 671436,
+    "output_size_in_bytes": 676948,
+    "alias_size_in_bytes": 0,
+    "temp_size_in_bytes": 179051264,
+    "host_argument_size_in_bytes": 0,
+    "host_output_size_in_bytes": 0
+  }
+}

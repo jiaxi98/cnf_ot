@@ -1,0 +1,8 @@
+distrax==0.1.9
+dm-haiku==0.0.17
+jax==0.10.2
+jaxlib==0.10.2
+jaxtyping==0.3.11
+numpy==2.4.6
+optax==0.2.8
+psutil==7.2.2
