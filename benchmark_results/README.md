@@ -99,3 +99,35 @@ These values are host-process RSS, not GPU device-memory measurements. Raw JSON
 files also retain the process maximum including compilation and XLA's static
 temporary-buffer estimate. The same script should be run on the paper's GPU
 before describing these values as GPU peak training memory.
+
+## Two-dimensional OU accuracy
+
+The OU experiment uses the paper's two-layer, width-16, five-bin architecture
+with `N_t=20`, `N_k=64`, `N_b=2048`, `lambda=500`, and 30,000 Adam steps. The
+equation parameters are `a=1`, `gamma=0.5`, `T=1`, and the initial distribution
+is `N(0, 4 I)`. Density, score, current velocity, and FP drift are evaluated
+with 131,072 independent samples from the exact density at each reported time.
+Both finite-difference steps are 0.01.
+
+```bash
+env PYTHONPATH=. XLA_PYTHON_CLIENT_PREALLOCATE=false \
+  .venv/bin/python benchmarks/train_eval_ou.py \
+  --epochs 30000 --time-batch-size 20 \
+  --boundary-batch-size 2048 --interior-batch-size 64 \
+  --eval-batch-size 131072 --lambda 500 --seed 42 \
+  --output benchmark_results/ou_d2_nt20_lambda500_accuracy.json \
+  --checkpoint benchmark_results/ou_d2_nt20_lambda500_params.pkl
+```
+
+| Time | Relative density L2 | Relative score RMSE | Relative current-velocity RMSE | Relative FP-drift RMSE |
+|---:|---:|---:|---:|---:|
+| 0.25 | 0.01103 | 0.02451 | 0.03958 | 0.03330 |
+| 0.50 | 0.01586 | 0.02894 | 0.05239 | 0.04065 |
+| 0.75 | 0.02082 | 0.03259 | 0.06303 | 0.04509 |
+| 1.00 | 0.02482 | 0.03520 | 0.08114 | 0.04815 |
+
+The density metric is the relative spatial L2 error. Each vector-field metric
+is the square root of the exact-density-weighted mean squared error divided by
+the corresponding weighted squared norm of the analytic field. A second
+evaluation with 262,144 samples and an independent random seed changed the
+reported errors by at most `4.9e-4`.

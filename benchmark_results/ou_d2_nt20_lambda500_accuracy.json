@@ -1,0 +1,69 @@
+{
+  "problem": "two-dimensional Ornstein-Uhlenbeck Fokker-Planck equation",
+  "architecture": {
+    "autoregressive_layers": 2,
+    "conditioner_hidden_sizes": [
+      16,
+      16
+    ],
+    "spline_bins": 5,
+    "parameters": 1200
+  },
+  "training": {
+    "epochs": 30000,
+    "learning_rate": 0.001,
+    "penalty": 500.0,
+    "time_batch_size": 20,
+    "boundary_batch_size": 2048,
+    "interior_batch_size": 64,
+    "seed": 42,
+    "final_stochastic_loss": 0.2706167287867133,
+    "seconds": 370.77695308400143
+  },
+  "equation": {
+    "horizon": 1.0,
+    "initial_variance": 4.0,
+    "drift_coefficient": 1.0,
+    "diffusion_coefficient": 0.5
+  },
+  "evaluation": {
+    "batch_size_per_time": 131072,
+    "space_finite_difference_step": 0.01,
+    "time_finite_difference_step": 0.01,
+    "sampling_distribution": "exact OU density at each reported time",
+    "results": [
+      {
+        "time": 0.25,
+        "relative_l2_density_error": 0.011030990038354853,
+        "relative_score_rmse": 0.024506194360665617,
+        "relative_current_velocity_rmse": 0.0395799210563911,
+        "relative_fp_drift_rmse": 0.03329642513945308
+      },
+      {
+        "time": 0.5,
+        "relative_l2_density_error": 0.01586358806924475,
+        "relative_score_rmse": 0.028936756729158058,
+        "relative_current_velocity_rmse": 0.052389883298496795,
+        "relative_fp_drift_rmse": 0.04064553977144434
+      },
+      {
+        "time": 0.75,
+        "relative_l2_density_error": 0.02082066926467868,
+        "relative_score_rmse": 0.03259037325440477,
+        "relative_current_velocity_rmse": 0.06303374784657838,
+        "relative_fp_drift_rmse": 0.04509138241012068
+      },
+      {
+        "time": 1.0,
+        "relative_l2_density_error": 0.024817793701001994,
+        "relative_score_rmse": 0.03520082661188619,
+        "relative_current_velocity_rmse": 0.0811434334768264,
+        "relative_fp_drift_rmse": 0.04814946767548808
+      }
+    ]
+  },
+  "jax": "0.10.2",
+  "devices": [
+    "cpu:0"
+  ]
+}
